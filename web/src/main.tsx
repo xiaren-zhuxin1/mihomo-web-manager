@@ -86,12 +86,10 @@ type Subscription = {
 };
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
-  const token = localStorage.getItem('mwm-token') || '';
   const res = await fetch(path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers || {})
     }
   });
@@ -115,7 +113,6 @@ function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [token, setToken] = useState(localStorage.getItem('mwm-token') || '');
 
   const refreshHealth = async () => {
     try {
@@ -168,26 +165,12 @@ function App() {
             <h1>{activeTitle}</h1>
             <p>{health ? `${health.mihomoController} · ${health.mihomoConfigPath}` : '正在连接管理服务'}</p>
           </div>
-          <div className="tokenBox">
-            <input
-              aria-label="Manager token"
-              placeholder="Manager token"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-            />
-            <button
-              title="保存令牌"
-              onClick={() => {
-                localStorage.setItem('mwm-token', token);
-                refreshHealth();
-              }}
-            >
-              <Save size={16} />
-            </button>
-          </div>
+          <button className="iconButton" title="刷新状态" onClick={refreshHealth}>
+            <RefreshCw size={16} />
+          </button>
         </header>
 
-        {health?.managerTokenActive && !token && <div className="notice">管理接口已启用鉴权，请在右上角输入 token 后保存。</div>}
+        {health?.managerTokenActive && <div className="notice">管理接口已启用鉴权。请通过反向代理或请求头注入 Authorization。</div>}
         {error && <div className="notice">{error}</div>}
 
         <section className="content">
@@ -853,7 +836,7 @@ function SectionNote({ title, body }: { title: string; body: string }) {
 function readError(err: unknown) {
   const text = err instanceof Error ? err.message : String(err);
   if (text.includes('unauthorized') || text.includes('401')) {
-    return '未授权：请在右上角输入 manager token 并保存。';
+    return '未授权：当前 WebUI 不再内置 token 输入框，请关闭 MWM_TOKEN，或通过反向代理注入 Authorization。';
   }
   return text;
 }

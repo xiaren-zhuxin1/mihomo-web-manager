@@ -17,7 +17,7 @@ Mihomo Web Manager is a Linux server WebUI for managing a local `mihomo` core fr
 - Config file editor with backup before write
 - `reload` through mihomo API
 - Service control through either `systemd` or Docker container mode
-- Optional bearer-token protection for manager APIs
+- Optional bearer-token protection for manager APIs when used behind a reverse proxy
 
 ## Screens
 
@@ -91,14 +91,14 @@ Open:
 http://127.0.0.1:8080
 ```
 
-Enter `MWM_TOKEN` in the top-right token box if API protection is enabled.
+The WebUI does not include a built-in password box. If `MWM_TOKEN` is enabled, put the manager behind a reverse proxy that injects the `Authorization` header, or leave `MWM_TOKEN` empty and protect access at the network / reverse-proxy layer.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MWM_LISTEN` | `:8080` | Manager listen address |
-| `MWM_TOKEN` | empty | Optional bearer token for manager APIs |
+| `MWM_TOKEN` | empty | Optional bearer token for manager APIs. The WebUI does not collect this token directly. |
 | `MWM_DATA_DIR` | `./data` | Manager data directory |
 | `MWM_BACKUP_DIR` | `./backups` | Config backup directory |
 | `MWM_WEB_DIR` | `./web/dist` | Built frontend directory |
@@ -175,7 +175,7 @@ go build -o mihomo-manager ./cmd/mihomo-manager
 
 ## Security Notes
 
-- Set `MWM_TOKEN` before exposing the WebUI to your LAN.
+- Protect the WebUI before exposing it to your LAN. Prefer reverse proxy authentication. If `MWM_TOKEN` is set, the reverse proxy must inject `Authorization: Bearer <token>`.
 - Prefer reverse proxy with HTTPS and access control.
 - Keep `MIHOMO_CONTROLLER` bound to `127.0.0.1` when possible.
 - Backups are stored in `MWM_BACKUP_DIR`; protect that directory.

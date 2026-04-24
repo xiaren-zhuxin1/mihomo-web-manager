@@ -2,7 +2,7 @@
 
 All manager APIs are under `/api`.
 
-If `MWM_TOKEN` is set, send:
+If `MWM_TOKEN` is set, API clients or your reverse proxy must send:
 
 ```http
 Authorization: Bearer <token>
@@ -63,4 +63,3 @@ POST /api/service/reload
 ```
 
 Service behavior depends on `MWM_SERVICE_MODE`.
-

@@ -128,20 +128,6 @@ h1 {
   word-break: break-all;
 }
 
-.tokenBox {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.tokenBox input {
-  width: 190px;
-  height: 36px;
-  border: 1px solid #d8dde6;
-  border-radius: 8px;
-  padding: 0 10px;
-}
-
 .subscriptionAdd {
   display: grid;
   grid-template-columns: minmax(160px, 240px) minmax(260px, 1fr) auto;
@@ -728,10 +714,6 @@ textarea {
   .topbar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .tokenBox input {
-    width: 100%;
   }
 
   .subscriptionAdd {
