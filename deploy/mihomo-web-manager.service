@@ -1,0 +1,16 @@
+[Unit]
+Description=Mihomo Web Manager
+After=network-online.target mihomo.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mihomo-web-manager
+EnvironmentFile=/opt/mihomo-web-manager/mihomo-web-manager.env
+ExecStart=/opt/mihomo-web-manager/mihomo-manager
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
