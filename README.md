@@ -19,17 +19,30 @@ Mihomo Web Manager is a Linux server WebUI for managing a local `mihomo` core fr
 - Service control through either `systemd` or Docker container mode
 - Optional bearer-token protection for manager APIs when used behind a reverse proxy
 
+## Screenshots
+
+Full screenshot gallery: [docs/SCREENSHOTS.md](./docs/SCREENSHOTS.md)
+
+![Overview](./docs/assets/screenshots/overview.png)
+
+![Proxy Strategy](./docs/assets/screenshots/proxies.png)
+
 ## Screens
 
 Current navigation:
 
-- `Overview`: controller, config path, service mode
-- `Proxies`: proxy groups, node selection, delay tests
-- `Subscriptions`: add subscriptions, managed subscriptions, config provider diagnostics
-- `Providers`: loaded proxy providers
-- `Rules`: rule providers
-- `Config`: raw config editor and backup
-- `Service`: start / stop / restart / reload
+- `总览`: controller health, runtime switches, current selected route, config path
+- `流量监控`: live upload / download stream
+- `连接追踪`: active connections, matched rule, route chain, close controls
+- `实时日志`: live log stream with connection state
+- `代理策略`: proxy groups, node selection, delay tests
+- `路由拓扑`: rule-to-policy relationship overview
+- `规则命中`: runtime rules and target distribution
+- `订阅管理`: add / edit / update manager-owned subscriptions and provider diagnostics
+- `节点 Provider`: loaded proxy providers and provider node health checks
+- `配置维护`: structured strategy group, rule, and rule-provider maintenance
+- `高级配置`: config editor and backups
+- `服务控制`: start / stop / restart / reload
 
 ## Architecture
 
@@ -188,7 +201,6 @@ go build -o mihomo-manager ./cmd/mihomo-manager
 - Safer config diff before write
 - Subscription import from existing updater tools
 - Profile management
-- Logs and connections pages
 - sing-box adapter
 - Docker image and release workflow
 

@@ -1497,6 +1497,25 @@ select {
   justify-items: end;
 }
 
+.streamStatus {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0 9px;
+  border: 1px solid #d8dde6;
+  background: #f8fafc;
+  color: #687386;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.streamStatus.online {
+  border-color: #8fd4ad;
+  background: #effbf5;
+  color: #107044;
+}
+
 .routePill {
   width: fit-content;
   min-height: 24px;

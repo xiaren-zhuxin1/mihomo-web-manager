@@ -1487,16 +1487,33 @@ function Logs() {
   const [logs, setLogs] = useState<string[]>([]);
   const [level, setLevel] = useState('info');
   const [error, setError] = useState('');
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     setLogs([]);
+    setConnected(false);
     const stream = new EventSource(`/api/mihomo/logs?level=${encodeURIComponent(level)}`);
+    stream.addEventListener('status', () => {
+      setConnected(true);
+      setError('');
+    });
+    stream.addEventListener('error', (event) => {
+      const data = (event as MessageEvent).data;
+      if (data) setError(data);
+    });
     stream.onmessage = (event) => {
       setLogs((current) => [...current.slice(-299), event.data]);
+      setConnected(true);
       setError('');
     };
-    stream.onerror = () => setError('日志流连接断开，正在等待浏览器自动重连。');
-    return () => stream.close();
+    stream.onerror = () => {
+      setConnected(false);
+      setError('日志流连接断开，正在等待浏览器自动重连。');
+    };
+    return () => {
+      setConnected(false);
+      stream.close();
+    };
   }, [level]);
 
   return (
@@ -1512,12 +1529,13 @@ function Logs() {
           <Trash2 size={16} />
           清空
         </button>
+        <span className={connected ? 'streamStatus online' : 'streamStatus'}>{connected ? '已连接' : '连接中'}</span>
       </div>
       <div className="logBox">
         {logs.map((line, index) => (
           <pre key={`${index}-${line}`}>{line}</pre>
         ))}
-        {logs.length === 0 && <p className="empty">等待日志数据</p>}
+        {logs.length === 0 && <p className="empty">{connected ? '日志流已连接，等待新日志' : '正在连接日志流'}</p>}
       </div>
     </Panel>
   );

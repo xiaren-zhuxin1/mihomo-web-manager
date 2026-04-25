@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -260,7 +261,7 @@ func (s *Server) handleMihomoProxy(w http.ResponseWriter, r *http.Request) {
 		targetPath += "?" + r.URL.RawQuery
 	}
 	if strings.HasPrefix(targetPath, "/traffic") || strings.HasPrefix(targetPath, "/logs") {
-		s.streamMihomo(w, r, targetPath)
+		s.streamMihomoSSE(w, r, targetPath)
 		return
 	}
 	status, body, err := s.forwardMihomo(r.Method, targetPath, r.Body)
@@ -295,11 +296,24 @@ func (s *Server) forwardMihomo(method string, path string, body io.Reader) (int,
 	return resp.StatusCode, string(data), nil
 }
 
-func (s *Server) streamMihomo(w http.ResponseWriter, r *http.Request, path string) {
+func (s *Server) streamMihomoSSE(w http.ResponseWriter, r *http.Request, path string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	writeSSE(w, "status", "connected")
+	if flusher != nil {
+		flusher.Flush()
+	}
+
 	url := strings.TrimRight(s.cfg.MihomoController, "/") + path
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, url, nil)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeSSE(w, "error", err.Error())
+		if flusher != nil {
+			flusher.Flush()
+		}
 		return
 	}
 	if s.cfg.MihomoSecret != "" {
@@ -307,37 +321,52 @@ func (s *Server) streamMihomo(w http.ResponseWriter, r *http.Request, path strin
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeSSE(w, "error", err.Error())
+		if flusher != nil {
+			flusher.Flush()
+		}
 		return
 	}
 	defer resp.Body.Close()
 
-	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
+	if resp.StatusCode >= 300 {
+		writeSSE(w, "error", fmt.Sprintf("mihomo stream returned %s", resp.Status))
+		if flusher != nil {
+			flusher.Flush()
 		}
+		return
 	}
-	if w.Header().Get("Content-Type") == "" {
-		w.Header().Set("Content-Type", "text/event-stream")
-	}
-	w.WriteHeader(resp.StatusCode)
 
-	flusher, _ := w.(http.Flusher)
-	buffer := make([]byte, 32*1024)
-	for {
-		n, readErr := resp.Body.Read(buffer)
-		if n > 0 {
-			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
-				return
-			}
-			if flusher != nil {
-				flusher.Flush()
-			}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
 		}
-		if readErr != nil {
+		writeSSE(w, "message", line)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	if err := scanner.Err(); err != nil && r.Context().Err() == nil {
+		writeSSE(w, "error", err.Error())
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+}
+
+func writeSSE(w io.Writer, event string, data string) {
+	if event != "" && event != "message" {
+		_, _ = fmt.Fprintf(w, "event: %s\n", event)
+	}
+	for _, line := range strings.Split(data, "\n") {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return
 		}
 	}
+	_, _ = fmt.Fprint(w, "\n")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
