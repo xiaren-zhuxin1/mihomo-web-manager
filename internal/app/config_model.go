@@ -2,8 +2,10 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,6 +39,27 @@ type configValidationIssue struct {
 	Message string `json:"message"`
 }
 
+type tunConfig struct {
+	Enable bool     `json:"enable"`
+	Stack  string   `json:"stack,omitempty"`
+	Device string   `json:"device,omitempty"`
+	DNSHijack []string `json:"dnsHijack,omitempty"`
+	AutoRoute *bool    `json:"autoRoute,omitempty"`
+	AutoDetectInterface *bool `json:"autoDetectInterface,omitempty"`
+}
+
+type tunDiagnostics struct {
+	Config                tunConfig `json:"config"`
+	Runtime               tunConfig `json:"runtime"`
+	ServiceMode           string    `json:"serviceMode"`
+	HostTunExists         bool      `json:"hostTunExists"`
+	DockerDeviceMapped    bool      `json:"dockerDeviceMapped"`
+	DockerNetAdmin        bool      `json:"dockerNetAdmin"`
+	DockerPrivileged      bool      `json:"dockerPrivileged"`
+	Ready                 bool      `json:"ready"`
+	Notes                 []string  `json:"notes"`
+}
+
 var configNamePattern = regexp.MustCompile(`^[\p{L}\p{N} _.\-()!@]+$`)
 
 func (s *Server) handleConfigModel(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +87,57 @@ func (s *Server) handleValidateConfigModel(w http.ResponseWriter, r *http.Reques
 		"ok":     len(errorIssues(issues)) == 0,
 		"issues": issues,
 	})
+}
+
+func (s *Server) handleTunDiagnostics(w http.ResponseWriter, r *http.Request) {
+	diagnostics, err := s.buildTunDiagnostics()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, diagnostics)
+}
+
+func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
+	var payload tunConfig
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	root, err := s.readConfigYAML()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	applyTunConfig(root, payload)
+	if err := s.writeConfigYAML(root); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	status, body, reloadErr := s.reloadMihomo()
+	diagnostics, diagErr := s.buildTunDiagnostics()
+	if diagErr != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"saved":        true,
+			"reloadStatus": status,
+			"reloadBody":   body,
+			"reloadError":  errorString(reloadErr),
+			"diagnostics":  nil,
+			"diagnosticError": diagErr.Error(),
+		})
+		return
+	}
+	if reloadErr != nil || status >= 300 {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"saved":        true,
+			"reloadStatus": status,
+			"reloadBody":   body,
+			"reloadError":  errorString(reloadErr),
+			"diagnostics":  diagnostics,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "diagnostics": diagnostics})
 }
 
 func (s *Server) handleUpsertProxyGroup(w http.ResponseWriter, r *http.Request) {
@@ -683,4 +757,201 @@ func fallback(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func (s *Server) buildTunDiagnostics() (tunDiagnostics, error) {
+	root, err := s.readConfigYAML()
+	if err != nil {
+		return tunDiagnostics{}, err
+	}
+	diagnostics := tunDiagnostics{
+		Config:      readTunConfig(mappingValue(root, "tun")),
+		ServiceMode: s.cfg.ServiceMode,
+		Notes:       []string{},
+	}
+	if _, err := os.Stat("/dev/net/tun"); err == nil {
+		diagnostics.HostTunExists = true
+	} else if !os.IsNotExist(err) {
+		diagnostics.Notes = append(diagnostics.Notes, "host /dev/net/tun check failed: "+err.Error())
+	}
+	if runtimeConfig, err := s.readRuntimeTunConfig(); err == nil {
+		diagnostics.Runtime = runtimeConfig
+	} else {
+		diagnostics.Notes = append(diagnostics.Notes, "runtime config read failed: "+err.Error())
+	}
+	if s.cfg.ServiceMode == "docker" {
+		mapped, netAdmin, privileged, err := inspectDockerTun(s.cfg.ContainerName)
+		diagnostics.DockerDeviceMapped = mapped
+		diagnostics.DockerNetAdmin = netAdmin
+		diagnostics.DockerPrivileged = privileged
+		if err != nil {
+			diagnostics.Notes = append(diagnostics.Notes, "docker inspect failed: "+err.Error())
+		}
+		if !diagnostics.DockerDeviceMapped && !diagnostics.DockerPrivileged {
+			diagnostics.Notes = append(diagnostics.Notes, "Docker container needs /dev/net/tun mapped into the container.")
+		}
+		if !diagnostics.DockerNetAdmin && !diagnostics.DockerPrivileged {
+			diagnostics.Notes = append(diagnostics.Notes, "Docker container needs NET_ADMIN capability or privileged mode.")
+		}
+		diagnostics.Ready = diagnostics.HostTunExists && (diagnostics.DockerPrivileged || (diagnostics.DockerDeviceMapped && diagnostics.DockerNetAdmin))
+	} else {
+		if !diagnostics.HostTunExists {
+			diagnostics.Notes = append(diagnostics.Notes, "Host is missing /dev/net/tun.")
+		}
+		diagnostics.Ready = diagnostics.HostTunExists
+	}
+	if !diagnostics.Config.Enable {
+		diagnostics.Notes = append(diagnostics.Notes, "TUN is disabled in config.yaml.")
+	}
+	return diagnostics, nil
+}
+
+func (s *Server) readRuntimeTunConfig() (tunConfig, error) {
+	status, body, err := s.forwardMihomo("GET", "/configs", nil)
+	if err != nil {
+		return tunConfig{}, err
+	}
+	if status >= 300 {
+		return tunConfig{}, fmt.Errorf("mihomo returned status %d", status)
+	}
+	var payload struct {
+		Tun struct {
+			Enable              bool     `json:"enable"`
+			Stack               string   `json:"stack"`
+			Device              string   `json:"device"`
+			DNSHijack           []string `json:"dns-hijack"`
+			AutoRoute           bool     `json:"auto-route"`
+			AutoDetectInterface bool     `json:"auto-detect-interface"`
+		} `json:"tun"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		return tunConfig{}, err
+	}
+	return tunConfig{
+		Enable:              payload.Tun.Enable,
+		Stack:               payload.Tun.Stack,
+		Device:              payload.Tun.Device,
+		DNSHijack:           payload.Tun.DNSHijack,
+		AutoRoute:           &payload.Tun.AutoRoute,
+		AutoDetectInterface: &payload.Tun.AutoDetectInterface,
+	}, nil
+}
+
+func readTunConfig(node *yaml.Node) tunConfig {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return tunConfig{}
+	}
+	return tunConfig{
+		Enable:              childBool(node, "enable"),
+		Stack:               fallback(childScalar(node, "stack"), "system"),
+		Device:              childScalar(node, "device"),
+		DNSHijack:           childScalars(node, "dns-hijack"),
+		AutoRoute:           optionalChildBool(node, "auto-route"),
+		AutoDetectInterface: optionalChildBool(node, "auto-detect-interface"),
+	}
+}
+
+func applyTunConfig(root *yaml.Node, patch tunConfig) {
+	tun := ensureMapping(root, "tun")
+	setMappingValue(tun, "enable", boolScalar(patch.Enable))
+	if strings.TrimSpace(patch.Stack) != "" {
+		setMappingValue(tun, "stack", scalar(strings.TrimSpace(patch.Stack)))
+	} else if childScalar(tun, "stack") == "" {
+		setMappingValue(tun, "stack", scalar("system"))
+	}
+	if strings.TrimSpace(patch.Device) != "" {
+		setMappingValue(tun, "device", scalar(strings.TrimSpace(patch.Device)))
+	}
+	if len(patch.DNSHijack) > 0 {
+		setMappingValue(tun, "dns-hijack", sequence(patch.DNSHijack))
+	} else if mappingValue(tun, "dns-hijack") == nil {
+		setMappingValue(tun, "dns-hijack", sequence([]string{"0.0.0.0:53"}))
+	}
+	if patch.AutoRoute != nil {
+		setMappingValue(tun, "auto-route", boolScalar(*patch.AutoRoute))
+	} else if mappingValue(tun, "auto-route") == nil {
+		setMappingValue(tun, "auto-route", boolScalar(true))
+	}
+	if patch.AutoDetectInterface != nil {
+		setMappingValue(tun, "auto-detect-interface", boolScalar(*patch.AutoDetectInterface))
+	} else if mappingValue(tun, "auto-detect-interface") == nil {
+		setMappingValue(tun, "auto-detect-interface", boolScalar(true))
+	}
+}
+
+func inspectDockerTun(container string) (deviceMapped bool, netAdmin bool, privileged bool, err error) {
+	out, err := runDocker("inspect", container)
+	if err != nil {
+		return false, false, false, err
+	}
+	var payload []struct {
+		HostConfig struct {
+			Privileged bool `json:"Privileged"`
+			CapAdd     []string `json:"CapAdd"`
+			Devices    []struct {
+				PathOnHost        string `json:"PathOnHost"`
+				PathInContainer   string `json:"PathInContainer"`
+				CgroupPermissions string `json:"CgroupPermissions"`
+			} `json:"Devices"`
+		} `json:"HostConfig"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		return false, false, false, err
+	}
+	if len(payload) == 0 {
+		return false, false, false, fmt.Errorf("container not found")
+	}
+	hostConfig := payload[0].HostConfig
+	privileged = hostConfig.Privileged
+	for _, cap := range hostConfig.CapAdd {
+		if strings.EqualFold(cap, "NET_ADMIN") {
+			netAdmin = true
+			break
+		}
+	}
+	for _, device := range hostConfig.Devices {
+		if device.PathOnHost == "/dev/net/tun" || device.PathInContainer == "/dev/net/tun" {
+			deviceMapped = true
+			break
+		}
+	}
+	return deviceMapped, netAdmin, privileged, nil
+}
+
+func setMappingValue(root *yaml.Node, key string, value *yaml.Node) {
+	if root.Kind != yaml.MappingNode {
+		root.Kind = yaml.MappingNode
+		root.Content = nil
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == key {
+			root.Content[i+1] = value
+			return
+		}
+	}
+	root.Content = append(root.Content, scalar(key), value)
+}
+
+func boolScalar(value bool) *yaml.Node {
+	if value {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}
+}
+
+func childBool(root *yaml.Node, key string) bool {
+	node := mappingValue(root, key)
+	if node == nil {
+		return false
+	}
+	return strings.EqualFold(node.Value, "true")
+}
+
+func optionalChildBool(root *yaml.Node, key string) *bool {
+	node := mappingValue(root, key)
+	if node == nil {
+		return nil
+	}
+	value := strings.EqualFold(node.Value, "true")
+	return &value
 }

@@ -416,6 +416,42 @@ h1 {
   color: #687386;
 }
 
+.tunDiagnostic {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #f0cf75;
+  border-radius: 8px;
+  background: #fff8df;
+  color: #6f4d00;
+}
+
+.tunDiagnostic.ready {
+  border-color: #8fd4ad;
+  background: #effbf5;
+  color: #0f693f;
+}
+
+.tunDiagnostic div {
+  display: grid;
+  gap: 4px;
+}
+
+.tunDiagnostic small {
+  color: inherit;
+  opacity: 0.78;
+}
+
+.tunDiagnostic ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.tunDiagnostic li {
+  margin: 3px 0;
+}
+
 .powerButton.on {
   background: #effbf5;
   border-color: #8fd4ad;

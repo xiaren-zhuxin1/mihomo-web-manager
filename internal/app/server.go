@@ -31,6 +31,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/config", s.auth(s.handlePutConfig))
 	mux.HandleFunc("GET /api/config/model", s.auth(s.handleConfigModel))
 	mux.HandleFunc("GET /api/config/validate", s.auth(s.handleValidateConfigModel))
+	mux.HandleFunc("GET /api/config/tun", s.auth(s.handleTunDiagnostics))
+	mux.HandleFunc("PATCH /api/config/tun", s.auth(s.handlePatchTunConfig))
 	mux.HandleFunc("PUT /api/config/proxy-groups/{name}", s.auth(s.handleUpsertProxyGroup))
 	mux.HandleFunc("POST /api/config/proxy-groups/{name}/move", s.auth(s.handleMoveProxyGroup))
 	mux.HandleFunc("DELETE /api/config/proxy-groups/{name}", s.auth(s.handleDeleteProxyGroup))

@@ -90,6 +90,29 @@ type RuntimeConfig = {
   port?: number;
 };
 
+type TunDiagnostics = {
+  config: {
+    enable?: boolean;
+    stack?: string;
+    device?: string;
+    dnsHijack?: string[];
+    autoRoute?: boolean;
+    autoDetectInterface?: boolean;
+  };
+  runtime: {
+    enable?: boolean;
+    stack?: string;
+    device?: string;
+  };
+  serviceMode: string;
+  hostTunExists: boolean;
+  dockerDeviceMapped: boolean;
+  dockerNetAdmin: boolean;
+  dockerPrivileged: boolean;
+  ready: boolean;
+  notes: string[];
+};
+
 type MihomoVersion = {
   version?: string;
   meta?: boolean;
@@ -453,17 +476,20 @@ function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () 
 function RuntimeControls() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [version, setVersion] = useState<MihomoVersion | null>(null);
+  const [tunDiagnostics, setTunDiagnostics] = useState<TunDiagnostics | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   const load = async () => {
     try {
-      const [nextConfig, nextVersion] = await Promise.all([
+      const [nextConfig, nextVersion, nextTunDiagnostics] = await Promise.all([
         api<RuntimeConfig>('/api/mihomo/configs'),
-        api<MihomoVersion>('/api/mihomo/version')
+        api<MihomoVersion>('/api/mihomo/version'),
+        api<TunDiagnostics>('/api/config/tun')
       ]);
       setConfig(nextConfig);
       setVersion(nextVersion);
+      setTunDiagnostics(nextTunDiagnostics);
       setError('');
     } catch (err) {
       setError(readError(err));
@@ -487,6 +513,34 @@ function RuntimeControls() {
     }
   };
 
+  const patchTun = async (enable: boolean) => {
+    try {
+      const stack = tunDiagnostics?.config?.stack || config?.tun?.stack || 'system';
+      const response = await api<{ reloadStatus?: number; reloadBody?: string; reloadError?: string; diagnostics?: TunDiagnostics }>('/api/config/tun', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          enable,
+          stack,
+          dnsHijack: tunDiagnostics?.config?.dnsHijack?.length ? tunDiagnostics.config.dnsHijack : ['0.0.0.0:53'],
+          autoRoute: tunDiagnostics?.config?.autoRoute ?? true,
+          autoDetectInterface: tunDiagnostics?.config?.autoDetectInterface ?? true
+        })
+      });
+      if (response.diagnostics) {
+        setTunDiagnostics(response.diagnostics);
+      }
+      if (response.reloadError || (response.reloadStatus && response.reloadStatus >= 300)) {
+        setError(readTunReloadError(response.reloadBody || response.reloadError || 'TUN 配置已写入，但 mihomo reload 失败'));
+      } else {
+        setMessage(enable ? 'TUN 配置已写入并尝试重载' : 'TUN 已关闭');
+        setError('');
+      }
+      await load();
+    } catch (err) {
+      setError(readError(err));
+    }
+  };
+
   return (
     <Panel title="运行配置" icon={<Settings2 size={18} />}>
       {error && <p className="inlineError">{error}</p>}
@@ -500,7 +554,7 @@ function RuntimeControls() {
               {config?.mode === 'direct' ? '代理关闭' : '代理开启'}
             </button>
             <label className="toggle">
-              <input type="checkbox" checked={Boolean(config?.tun?.enable)} onChange={(event) => patchConfig({ tun: { ...(config?.tun || {}), enable: event.target.checked } })} />
+              <input type="checkbox" checked={Boolean(tunDiagnostics?.config?.enable ?? config?.tun?.enable)} onChange={(event) => patchTun(event.target.checked)} />
               <span>TUN</span>
             </label>
           </div>
@@ -555,10 +609,27 @@ function RuntimeControls() {
         <div className="runtimeBlock">
           <span>TUN</span>
           <div className="runtimeFacts">
-            <strong>{config?.tun?.enable ? 'enabled' : 'disabled'}</strong>
-            <small>{config?.tun?.stack || '-'} {config?.tun?.device || ''}</small>
+            <strong>{tunDiagnostics?.config?.enable ? 'config enabled' : 'config disabled'}</strong>
+            <small>runtime {tunDiagnostics?.runtime?.enable ? 'enabled' : 'disabled'} · {tunDiagnostics?.config?.stack || config?.tun?.stack || '-'}</small>
           </div>
         </div>
+      </div>
+      <div className={tunDiagnostics?.ready ? 'tunDiagnostic ready' : 'tunDiagnostic'}>
+        <div>
+          <strong>{tunDiagnostics?.ready ? 'TUN 环境就绪' : 'TUN 环境未就绪'}</strong>
+          <small>
+            {tunDiagnostics?.serviceMode === 'docker'
+              ? `Docker: /dev/net/tun ${tunDiagnostics?.dockerDeviceMapped || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'} · NET_ADMIN ${tunDiagnostics?.dockerNetAdmin || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'}`
+              : `/dev/net/tun ${tunDiagnostics?.hostTunExists ? 'OK' : '缺失'}`}
+          </small>
+        </div>
+        {tunDiagnostics?.notes?.length ? (
+          <ul>
+            {tunDiagnostics.notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </Panel>
   );
@@ -2391,6 +2462,17 @@ function readError(err: unknown) {
   const text = err instanceof Error ? err.message : String(err);
   if (text.includes('unauthorized') || text.includes('401')) {
     return '未授权：当前 WebUI 不再内置 token 输入框，请关闭 MWM_TOKEN，或通过反向代理注入 Authorization。';
+  }
+  return text;
+}
+
+function readTunReloadError(value: string) {
+  const text = parseErrorText(value) || value;
+  if (text.includes('/dev/net/tun') || text.includes('no such file or directory')) {
+    return 'TUN 配置已写入，但 mihomo 无法创建 TUN 设备。Docker 部署需要挂载 /dev/net/tun，并添加 NET_ADMIN capability 或 privileged 模式。';
+  }
+  if (text.includes('operation not permitted') || text.includes('permission denied')) {
+    return 'TUN 配置已写入，但 mihomo 权限不足。请检查容器 NET_ADMIN/privileged 或主机运行权限。';
   }
   return text;
 }
