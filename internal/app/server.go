@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -27,9 +28,24 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/config", s.auth(s.handleGetConfig))
 	mux.HandleFunc("PUT /api/config", s.auth(s.handlePutConfig))
+	mux.HandleFunc("GET /api/config/model", s.auth(s.handleConfigModel))
+	mux.HandleFunc("GET /api/config/validate", s.auth(s.handleValidateConfigModel))
+	mux.HandleFunc("PUT /api/config/proxy-groups/{name}", s.auth(s.handleUpsertProxyGroup))
+	mux.HandleFunc("POST /api/config/proxy-groups/{name}/move", s.auth(s.handleMoveProxyGroup))
+	mux.HandleFunc("DELETE /api/config/proxy-groups/{name}", s.auth(s.handleDeleteProxyGroup))
+	mux.HandleFunc("POST /api/config/rules", s.auth(s.handleAddConfigRule))
+	mux.HandleFunc("PUT /api/config/rules/{index}", s.auth(s.handleUpdateConfigRule))
+	mux.HandleFunc("POST /api/config/rules/{index}/move", s.auth(s.handleMoveConfigRule))
+	mux.HandleFunc("DELETE /api/config/rules/{index}", s.auth(s.handleDeleteConfigRule))
+	mux.HandleFunc("PUT /api/config/rule-providers/{name}", s.auth(s.handleUpsertRuleProvider))
+	mux.HandleFunc("DELETE /api/config/rule-providers/{name}", s.auth(s.handleDeleteRuleProvider))
 	mux.HandleFunc("POST /api/config/backup", s.auth(s.handleBackupConfig))
+	mux.HandleFunc("GET /api/config/backups", s.auth(s.handleListConfigBackups))
+	mux.HandleFunc("GET /api/config/backups/{name}", s.auth(s.handleGetConfigBackup))
+	mux.HandleFunc("POST /api/config/backups/{name}/restore", s.auth(s.handleRestoreConfigBackup))
 	mux.HandleFunc("GET /api/subscriptions", s.auth(s.handleListSubscriptions))
 	mux.HandleFunc("POST /api/subscriptions", s.auth(s.handleCreateSubscription))
+	mux.HandleFunc("PATCH /api/subscriptions/{id}", s.auth(s.handleEditSubscription))
 	mux.HandleFunc("POST /api/subscriptions/{id}/update", s.auth(s.handleUpdateSubscription))
 	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.auth(s.handleDeleteSubscription))
 	mux.HandleFunc("GET /api/service/status", s.auth(s.handleServiceStatus))
@@ -129,6 +145,99 @@ func (s *Server) handleBackupConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"path": path})
 }
 
+type configBackupInfo struct {
+	Name       string    `json:"name"`
+	Path       string    `json:"path"`
+	Size       int64     `json:"size"`
+	ModifiedAt time.Time `json:"modifiedAt"`
+}
+
+func (s *Server) handleListConfigBackups(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir(s.cfg.BackupDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJSON(w, http.StatusOK, map[string]any{"backups": []configBackupInfo{}})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	backups := make([]configBackupInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		path := filepath.Join(s.cfg.BackupDir, entry.Name())
+		backups = append(backups, configBackupInfo{
+			Name:       entry.Name(),
+			Path:       path,
+			Size:       info.Size(),
+			ModifiedAt: info.ModTime(),
+		})
+	}
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].ModifiedAt.After(backups[j].ModifiedAt)
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"backups": backups})
+}
+
+func (s *Server) handleGetConfigBackup(w http.ResponseWriter, r *http.Request) {
+	path, ok := s.configBackupPath(r.PathValue("name"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid backup name")
+		return
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"content": string(body)})
+}
+
+func (s *Server) handleRestoreConfigBackup(w http.ResponseWriter, r *http.Request) {
+	path, ok := s.configBackupPath(r.PathValue("name"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid backup name")
+		return
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if _, err := s.backupConfig(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("backup failed: %v", err))
+		return
+	}
+	if err := os.WriteFile(s.cfg.MihomoConfigPath, body, 0o640); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	status, responseBody, err := s.forwardMihomo("PUT", "/configs?force=true", strings.NewReader(`{}`))
+	if err != nil || status >= 300 {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"restored":     true,
+			"reloadStatus": status,
+			"reloadBody":   responseBody,
+			"reloadError":  errorString(err),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"restored": true})
+}
+
+func (s *Server) configBackupPath(name string) (string, bool) {
+	if name == "" || name != filepath.Base(name) || !strings.HasSuffix(name, ".yaml") {
+		return "", false
+	}
+	return filepath.Join(s.cfg.BackupDir, name), true
+}
+
 func (s *Server) backupConfig() (string, error) {
 	body, err := os.ReadFile(s.cfg.MihomoConfigPath)
 	if err != nil {
@@ -149,6 +258,10 @@ func (s *Server) handleMihomoProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.RawQuery != "" {
 		targetPath += "?" + r.URL.RawQuery
+	}
+	if strings.HasPrefix(targetPath, "/traffic") || strings.HasPrefix(targetPath, "/logs") {
+		s.streamMihomo(w, r, targetPath)
+		return
 	}
 	status, body, err := s.forwardMihomo(r.Method, targetPath, r.Body)
 	if err != nil {
@@ -182,6 +295,51 @@ func (s *Server) forwardMihomo(method string, path string, body io.Reader) (int,
 	return resp.StatusCode, string(data), nil
 }
 
+func (s *Server) streamMihomo(w http.ResponseWriter, r *http.Request, path string) {
+	url := strings.TrimRight(s.cfg.MihomoController, "/") + path
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, url, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if s.cfg.MihomoSecret != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.MihomoSecret)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "text/event-stream")
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	flusher, _ := w.(http.Flusher)
+	buffer := make([]byte, 32*1024)
+	for {
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -202,7 +360,7 @@ func errorString(err error) string {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

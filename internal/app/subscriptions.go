@@ -34,6 +34,8 @@ type Subscription struct {
 	Total        int64     `json:"total,omitempty"`
 	Expire       int64     `json:"expire,omitempty"`
 	Error        string    `json:"error,omitempty"`
+	NodeCount    int       `json:"nodeCount,omitempty"`
+	LastStatus   string    `json:"lastStatus,omitempty"`
 }
 
 func (s *Server) handleListSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +48,9 @@ func (s *Server) handleListSubscriptions(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for index := range items {
+		items[index].NodeCount = s.providerNodeCount(items[index])
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscriptions": items})
 }
@@ -112,6 +117,57 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, item)
 }
 
+func (s *Server) handleEditSubscription(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var payload struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.URL = strings.TrimSpace(payload.URL)
+	if payload.URL == "" {
+		writeError(w, http.StatusBadRequest, "subscription url is required")
+		return
+	}
+	if _, err := url.ParseRequestURI(payload.URL); err != nil {
+		writeError(w, http.StatusBadRequest, "subscription url is invalid")
+		return
+	}
+	items, err := s.loadSubscriptions()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for index, item := range items {
+		if item.ID != id {
+			continue
+		}
+		if !item.Managed {
+			writeError(w, http.StatusBadRequest, "only manager subscriptions can be edited")
+			return
+		}
+		item.Name = payload.Name
+		if item.Name == "" {
+			item.Name = guessSubscriptionName(payload.URL)
+		}
+		item.URL = payload.URL
+		item.Error = ""
+		item.LastStatus = "edited"
+		items[index] = item
+		if err := s.saveSubscriptions(items); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, item)
+		return
+	}
+	writeError(w, http.StatusNotFound, "subscription not found")
+}
+
 func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	items, err := s.loadSubscriptions()
@@ -126,6 +182,7 @@ func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request
 		updated, err := s.refreshSubscription(item)
 		if err != nil {
 			item.Error = err.Error()
+			item.LastStatus = "failed"
 			items[index] = item
 			_ = s.saveSubscriptions(items)
 			writeError(w, http.StatusBadGateway, err.Error())
@@ -248,9 +305,11 @@ func (s *Server) refreshSubscription(item Subscription) (Subscription, error) {
 	item.Upload, item.Download, item.Total, item.Expire = parseUserInfo(resp.Header.Get("Subscription-Userinfo"))
 	item.UpdatedAt = time.Now()
 	item.Error = ""
+	item.LastStatus = "updated"
 	item.Type = "file"
 	item.Path = "./proxy-providers/" + item.ProviderName + ".yaml"
 	item.Exists = true
+	item.NodeCount = countProviderNodes(data)
 
 	status, body, err := s.forwardMihomo("PUT", "/providers/proxies/"+url.PathEscape(item.ProviderName), strings.NewReader(`{}`))
 	if err != nil {
@@ -319,9 +378,25 @@ func (s *Server) mergeConfigProviders(items []Subscription) ([]Subscription, err
 			Path:         childScalar(node, "path"),
 		}
 		item.Exists = s.providerPathExists(item)
+		item.NodeCount = s.providerNodeCount(item)
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func (s *Server) providerNodeCount(item Subscription) int {
+	if item.Type != "file" || item.Path == "" {
+		return item.NodeCount
+	}
+	path := item.Path
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(s.cfg.MihomoConfigPath), path)
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return item.NodeCount
+	}
+	return countProviderNodes(data)
 }
 
 func (s *Server) providerPathExists(item Subscription) bool {
@@ -509,6 +584,18 @@ func normalizeProviderContent(data []byte) ([]byte, error) {
 		return yaml.Marshal(&doc)
 	}
 	return data, nil
+}
+
+func countProviderNodes(data []byte) int {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil || len(root.Content) == 0 {
+		return 0
+	}
+	proxies := mappingValue(root.Content[0], "proxies")
+	if proxies == nil || proxies.Kind != yaml.SequenceNode {
+		return 0
+	}
+	return len(proxies.Content)
 }
 
 func subscriptionID(rawURL string) string {

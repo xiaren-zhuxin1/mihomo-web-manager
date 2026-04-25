@@ -3,8 +3,8 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #f6f7f8;
-  color: #18212f;
+  background: #eef2f7;
+  color: #142033;
 }
 
 * {
@@ -13,17 +13,22 @@
 
 body {
   margin: 0;
+  background:
+    linear-gradient(135deg, rgba(13, 23, 38, 0.04), transparent 36%),
+    linear-gradient(315deg, rgba(22, 119, 255, 0.08), transparent 32%),
+    #eef2f7;
 }
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
 
 button {
-  border: 1px solid #d8dde6;
-  background: #ffffff;
+  border: 1px solid #d4dce8;
+  background: rgba(255, 255, 255, 0.92);
   color: #1f2a3a;
   border-radius: 8px;
   cursor: pointer;
@@ -36,7 +41,8 @@ button {
 }
 
 button:hover {
-  border-color: #91a0b7;
+  border-color: #6f8db8;
+  box-shadow: 0 8px 20px rgba(20, 32, 51, 0.08);
 }
 
 .app {
@@ -46,9 +52,10 @@ button:hover {
 }
 
 .sidebar {
-  border-right: 1px solid #dce1ea;
-  background: #ffffff;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, #101828, #18263a 62%, #112033);
   padding: 18px 14px;
+  color: #edf4ff;
 }
 
 .brand {
@@ -65,14 +72,28 @@ button:hover {
 }
 
 .brand span {
-  color: #6b7483;
+  color: #93a4ba;
   font-size: 12px;
   margin-top: 2px;
 }
 
 nav {
   display: grid;
+  gap: 16px;
+}
+
+.navGroup {
+  display: grid;
   gap: 6px;
+}
+
+.navGroupTitle {
+  padding: 0 10px;
+  color: #7f91aa;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 nav button {
@@ -80,13 +101,15 @@ nav button {
   border-color: transparent;
   width: 100%;
   height: 42px;
-  color: #4b5565;
+  color: #c7d2e2;
+  background: transparent;
 }
 
 nav button.active {
-  background: #eaf2ff;
-  color: #1457c8;
-  border-color: #b9d2ff;
+  background: rgba(80, 144, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(116, 169, 255, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .main {
@@ -102,9 +125,9 @@ nav button.active {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 24px;
-  border-bottom: 1px solid #dce1ea;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  background: rgba(247, 250, 255, 0.78);
+  backdrop-filter: blur(18px);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -193,6 +216,35 @@ h1 {
   white-space: nowrap;
 }
 
+.subscriptionEdit {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.5fr) auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.subscriptionEdit input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.subscriptionStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.subscriptionStats .metric {
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+
 .usageBar {
   height: 5px;
   border-radius: 999px;
@@ -274,10 +326,111 @@ h1 {
   line-height: 1.45;
 }
 
+.currentProxyBox {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(220px, 1fr) minmax(100px, 160px) minmax(120px, 180px) minmax(90px, 120px) minmax(90px, 120px) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.currentProxyBox div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.currentProxyBox span {
+  color: #687386;
+  font-size: 12px;
+}
+
+.currentProxyBox strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.currentProxyBox .inlineDelay {
+  width: fit-content;
+}
+
+.runtimeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.runtimeBlock {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.runtimeBlock > span,
+.ruleMeta {
+  color: #687386;
+  font-size: 12px;
+}
+
+.segmented,
+.toggleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.toggle {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4d5868;
+}
+
+.runtimeFacts {
+  display: grid;
+  gap: 4px;
+}
+
+.runtimeFacts strong,
+.runtimeFacts small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtimeFacts small {
+  color: #687386;
+}
+
+.powerButton.on {
+  background: #effbf5;
+  border-color: #8fd4ad;
+  color: #107044;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   gap: 16px;
+}
+
+.configSplit {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  align-items: start;
 }
 
 .stack {
@@ -286,11 +439,12 @@ h1 {
 }
 
 .panel {
-  background: #ffffff;
-  border: 1px solid #dce1ea;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(213, 221, 234, 0.9);
   border-radius: 8px;
   padding: 16px;
   min-width: 0;
+  box-shadow: 0 18px 45px rgba(20, 32, 51, 0.07);
 }
 
 .panelTitle {
@@ -561,6 +715,24 @@ h1 {
   padding: 0 10px;
 }
 
+.wideInput {
+  height: 36px;
+  flex: 1;
+  min-width: 280px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+select {
+  height: 36px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1f2a3a;
+}
+
 .activeMode {
   border-color: #6ca0ff;
   background: #f3f7ff;
@@ -589,6 +761,495 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.ruleList {
+  display: grid;
+  gap: 8px;
+}
+
+.ruleCard {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.ruleCard.disabled {
+  opacity: 0.58;
+}
+
+.ruleIndex {
+  color: #687386;
+  font-size: 12px;
+  font-weight: 700;
+  padding-top: 3px;
+}
+
+.ruleBody {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.ruleMain {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ruleMain strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ruleMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.topologyLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 420px);
+  gap: 16px;
+}
+
+.topologyList,
+.targetList,
+.targetChips {
+  display: grid;
+  gap: 8px;
+}
+
+.targetChips {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin-bottom: 12px;
+}
+
+.topologyCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.topologyHead,
+.flowLine,
+.targetRow,
+.targetChip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topologyHead span {
+  color: #687386;
+  font-size: 12px;
+}
+
+.flowLine {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.flowLine span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flowLine b {
+  color: #6b7d95;
+}
+
+.targetRow,
+.targetChip {
+  min-height: 38px;
+}
+
+.targetRow {
+  width: 100%;
+}
+
+.targetRow.active,
+.targetChip.active {
+  border-color: #6ca0ff;
+  background: #f3f7ff;
+  color: #1457c8;
+}
+
+.ruleList.compact {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.maintainGrid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.4fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.maintainForm {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.maintainForm input,
+.maintainForm select {
+  min-width: 0;
+}
+
+.formTip,
+.fieldError {
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.formTip {
+  margin-bottom: 10px;
+  border: 1px solid #d8dde6;
+  background: #f8fafc;
+  color: #4d5868;
+}
+
+.fieldError {
+  border: 1px solid #f1c2bd;
+  background: #fff7f6;
+  color: #b42318;
+}
+
+.selectTip {
+  padding: 8px 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4d5868;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.invalidInput {
+  border-color: #e17b70 !important;
+  background: #fffafa !important;
+}
+
+.formGrid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.miniTextarea {
+  min-height: 90px;
+  max-height: 150px;
+  padding: 10px;
+}
+
+.maintainList {
+  display: grid;
+  gap: 8px;
+  max-height: 460px;
+  overflow: auto;
+}
+
+.maintainList.tall {
+  max-height: 650px;
+}
+
+.maintainRow,
+.ruleEditRow {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+}
+
+.maintainRow {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.maintainRow > button:first-child {
+  min-width: 0;
+  min-height: 52px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.maintainRow span,
+.maintainRow small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.maintainRow small {
+  color: #687386;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.ruleEditRow {
+  grid-template-columns: 48px minmax(0, 1fr) auto auto auto auto;
+  padding: 8px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.ruleEditRow.invalid {
+  border-color: #f1c2bd;
+  background: #fffafa;
+}
+
+.ruleEditRow > span {
+  color: #687386;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ruleEditMain {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.ruleEditRow input,
+.ruleEditRow select,
+.chipAdd input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.ruleFields {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.3fr) minmax(130px, 0.8fr);
+  gap: 6px;
+}
+
+.ruleFields select,
+.ruleFields input {
+  min-width: 0;
+}
+
+.rulePreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.configPreview {
+  min-height: calc(100vh - 300px);
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #101828;
+  overflow: auto;
+  padding: 12px;
+}
+
+.configPreview pre {
+  margin: 0;
+  color: #d1e7ff;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.configPreview span {
+  display: block;
+  margin-top: 12px;
+  color: #93a4ba;
+  font-size: 12px;
+}
+
+.rulePreview span,
+.rulePreview strong {
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.rulePreview span {
+  border: 1px solid #d8dde6;
+  background: #ffffff;
+  color: #4d5868;
+}
+
+.rulePreview strong {
+  background: #eef5ff;
+  color: #1457c8;
+}
+
+.ruleBuilder {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.5fr) minmax(150px, 0.8fr) auto;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #f8fafc;
+  margin-bottom: 10px;
+}
+
+.chipEditor {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.chipHeader {
+  display: grid;
+  gap: 3px;
+}
+
+.chipHeader span,
+.chipEmpty {
+  color: #687386;
+  font-size: 12px;
+}
+
+.chipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  min-height: 28px;
+  border-color: #b9d2ff;
+  background: #f3f7ff;
+  color: #1457c8;
+  padding: 0 8px;
+}
+
+.chipAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.ruleBuilder input {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.relationHint {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #4d5868;
+  font-size: 12px;
+}
+
+.miniTargetList,
+.issueList {
+  display: grid;
+  gap: 8px;
+}
+
+.miniTargetList {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.miniTargetList span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #ffffff;
+  color: #4d5868;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.issueList {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.issueCard {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d8dde6;
+  background: #fbfcfe;
+}
+
+.issueCard span {
+  width: fit-content;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 7px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.issueCard.error {
+  border-color: #f1c2bd;
+  background: #fff7f6;
+}
+
+.issueCard.error span {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.issueCard.warning {
+  border-color: #f0cf75;
+  background: #fffaf0;
+}
+
+.issueCard.warning span {
+  background: #fff7df;
+  color: #946200;
+}
+
+.issueCard p {
+  color: #4d5868;
+  font-size: 13px;
+}
+
 .providerGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -608,6 +1269,31 @@ h1 {
   background: #fbfcfe;
 }
 
+.providerCard.selected {
+  border-color: #6ca0ff;
+  background: #f3f7ff;
+}
+
+.providerSelect {
+  min-width: 0;
+  min-height: 36px;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.providerSelect:hover {
+  border-color: transparent;
+}
+
+.providerActions {
+  display: flex;
+  gap: 6px;
+}
+
+.providerSelect,
 .providerCard > div:first-child {
   min-width: 0;
 }
@@ -628,6 +1314,253 @@ h1 {
   grid-column: 1 / -1;
   border-bottom: 0;
   padding: 4px 0 0;
+}
+
+.providerSummary {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(220px, 1fr) minmax(160px, 240px);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.providerSummary .metric {
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfcfe;
+}
+
+.providerNodeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.providerNodeCard {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.nodeMainText {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.nodeMainText strong,
+.nodeMainText span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeMainText span {
+  color: #687386;
+  font-size: 12px;
+}
+
+.statusPill {
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  background: #f3f4f6;
+  color: #687386;
+}
+
+.statusPill.good {
+  background: #e8f8ef;
+  color: #0f7a45;
+}
+
+.statusPill.bad {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.backupList {
+  display: grid;
+  gap: 8px;
+}
+
+.backupCard {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.backupCard.selected {
+  border-color: #6ca0ff;
+  background: #f3f7ff;
+}
+
+.backupCard strong,
+.backupCard span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.backupCard span {
+  color: #687386;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.backupActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.backupActions button {
+  min-height: 32px;
+}
+
+.trafficChart {
+  min-height: 260px;
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.trafficBar {
+  flex: 1;
+  min-width: 5px;
+  height: 220px;
+  display: flex;
+  align-items: end;
+  gap: 2px;
+}
+
+.trafficBar span {
+  width: 50%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+}
+
+.trafficBar .up {
+  background: #3fae75;
+}
+
+.trafficBar .down {
+  background: #4d9cff;
+}
+
+.connectionList {
+  display: grid;
+  gap: 8px;
+}
+
+.connectionCard {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(190px, 1fr) minmax(160px, 1fr) minmax(120px, auto) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.connectionCard strong,
+.connectionCard span,
+.connectionCard small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connectionCard span,
+.connectionCard small {
+  color: #687386;
+  font-size: 12px;
+}
+
+.connectionTraffic {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.routePill {
+  width: fit-content;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.routePill.proxy {
+  background: #eef5ff;
+  color: #1457c8;
+}
+
+.routePill.direct {
+  background: #e8f8ef;
+  color: #0f7a45;
+}
+
+.routePill.reject {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.chainList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chainList span {
+  max-width: 160px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d8dde6;
+  border-radius: 7px;
+  padding: 0 7px;
+  background: #ffffff;
+  color: #4d5868;
+  font-size: 11px;
+}
+
+.logBox {
+  height: calc(100vh - 210px);
+  min-height: 420px;
+  overflow: auto;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: #101828;
+  padding: 12px;
+}
+
+.logBox pre {
+  margin: 0;
+  padding: 2px 0;
+  color: #d1e7ff;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .empty {
@@ -694,7 +1627,19 @@ textarea {
   }
 
   nav {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .navGroup {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .navGroupTitle {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 0;
   }
 
   nav button {
@@ -707,7 +1652,25 @@ textarea {
   }
 
   .grid,
-  .split {
+  .split,
+  .topologyLayout,
+  .maintainGrid,
+  .currentProxyBox,
+  .runtimeGrid,
+  .providerSummary,
+  .connectionCard {
+    grid-template-columns: 1fr;
+  }
+
+  .ruleCard {
+    grid-template-columns: 1fr;
+  }
+
+  .ruleEditRow,
+  .ruleFields,
+  .ruleBuilder,
+  .chipAdd,
+  .formGrid2 {
     grid-template-columns: 1fr;
   }
 
@@ -717,6 +1680,11 @@ textarea {
   }
 
   .subscriptionAdd {
+    grid-template-columns: 1fr;
+  }
+
+  .subscriptionEdit,
+  .subscriptionStats {
     grid-template-columns: 1fr;
   }
 }
