@@ -113,7 +113,7 @@ func (s *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -247,7 +247,7 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			if err := s.reloadMihomo(); err != nil {
+			if _, _, err := s.reloadMihomo(); err != nil {
 				writeJSON(w, http.StatusAccepted, map[string]any{
 					"deleted":     true,
 					"reloadError": err.Error(),
@@ -268,7 +268,7 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -299,7 +299,7 @@ func (s *Server) refreshSubscription(item Subscription) (Subscription, error) {
 	if err := s.ensureProviderInConfig(item); err != nil {
 		return item, err
 	}
-	if err := s.reloadMihomo(); err != nil {
+	if _, _, err := s.reloadMihomo(); err != nil {
 		return item, err
 	}
 	item.Upload, item.Download, item.Total, item.Expire = parseUserInfo(resp.Header.Get("Subscription-Userinfo"))
@@ -465,15 +465,15 @@ func (s *Server) writeConfigYAML(root *yaml.Node) error {
 	return os.WriteFile(s.cfg.MihomoConfigPath, data, 0o640)
 }
 
-func (s *Server) reloadMihomo() error {
+func (s *Server) reloadMihomo() (int, string, error) {
 	status, body, err := s.forwardMihomo("PUT", "/configs?force=true", strings.NewReader(`{}`))
 	if err != nil {
-		return err
+		return status, body, err
 	}
 	if status >= 300 {
-		return fmt.Errorf("mihomo reload failed: %s", body)
+		return status, body, fmt.Errorf("mihomo reload failed: %s", body)
 	}
-	return nil
+	return status, body, nil
 }
 
 func ensureMapping(root *yaml.Node, key string) *yaml.Node {

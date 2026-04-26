@@ -45,6 +45,16 @@ button:hover {
   box-shadow: 0 8px 20px rgba(20, 32, 51, 0.08);
 }
 
+button:disabled {
+  cursor: default;
+  box-shadow: none;
+}
+
+button:disabled:hover {
+  border-color: #d4dce8;
+  box-shadow: none;
+}
+
 .app {
   min-height: 100vh;
   display: grid;
@@ -400,6 +410,66 @@ h1 {
   color: #4d5868;
 }
 
+.toggleSwitch {
+  position: relative;
+  min-width: 78px;
+  padding: 0 11px 0 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleSwitch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.switchTrack {
+  width: 34px;
+  height: 20px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 999px;
+  background: #d8dde6;
+  transition: background 0.16s ease;
+}
+
+.switchTrack::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(20, 32, 51, 0.24);
+  transition: transform 0.16s ease;
+}
+
+.toggleSwitch.checked {
+  border-color: #8fd4ad;
+  background: #effbf5;
+  color: #107044;
+}
+
+.toggleSwitch.checked .switchTrack {
+  background: #2fa36b;
+}
+
+.toggleSwitch.checked .switchTrack::before {
+  transform: translateX(14px);
+}
+
+.toggleSwitch:focus-within {
+  outline: 2px solid rgba(31, 111, 235, 0.28);
+  outline-offset: 2px;
+}
+
 .runtimeFacts {
   display: grid;
   gap: 4px;
@@ -416,31 +486,311 @@ h1 {
   color: #687386;
 }
 
+.guideHero {
+  min-height: 190px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(31, 111, 235, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(16, 24, 40, 0.94), rgba(25, 60, 96, 0.88)),
+    radial-gradient(circle at 82% 12%, rgba(91, 141, 239, 0.44), transparent 32%);
+  color: #ffffff;
+  box-shadow: 0 22px 55px rgba(20, 32, 51, 0.18);
+}
+
+.guideHero div {
+  display: grid;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.guideHero span {
+  color: #a8c7ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.guideHero h2 {
+  font-size: 26px;
+  line-height: 1.22;
+}
+
+.guideHero p {
+  color: #dbe7ff;
+  line-height: 1.65;
+}
+
+.routeFlow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.routeFlow div,
+.conceptList div,
+.recipeGrid div,
+.guideSteps div {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.routeFlow strong,
+.conceptList strong,
+.recipeGrid strong,
+.guideSteps strong {
+  color: #101828;
+}
+
+.routeFlow span,
+.conceptList span,
+.recipeGrid span,
+.guideSteps p {
+  color: #5f6b7c;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.guideGrid,
+.recipeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.guideSteps,
+.conceptList {
+  display: grid;
+  gap: 10px;
+}
+
+.guideSteps button {
+  width: fit-content;
+  min-height: 32px;
+}
+
+.recipeGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.recipeGrid code {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #101828;
+  color: #d1e7ff;
+  overflow-wrap: anywhere;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.tunSettings {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.tunSettingsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.tunSettingsHeader div,
+.tunFieldsetTitle,
+.tunFormGrid > label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.tunSettingsHeader strong,
+.tunSettingsHeader span {
+  display: block;
+}
+
+.tunSettingsHeader span,
+.tunFieldsetTitle span,
+.tunFormGrid small,
+.tunOptionGroup small {
+  color: #687386;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tunSettingsGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.35fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.tunFieldset {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.tunFieldsetTitle {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.tunFieldsetTitle strong {
+  font-size: 13px;
+}
+
+.tunFormGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.tunFormGrid.twoColumns {
+  grid-template-columns: minmax(150px, 180px) minmax(220px, 1fr);
+}
+
+.tunFormGrid.dnsRouteGrid {
+  grid-template-columns: minmax(240px, 1fr) minmax(170px, 210px) minmax(170px, 210px);
+  align-items: start;
+}
+
+.tunFormGrid > label,
+.tunOptionGroup {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 18px 36px minmax(36px, auto);
+  gap: 5px;
+  align-content: start;
+}
+
+.tunOptionGroup::before {
+  content: '';
+}
+
+.tunFormGrid > label > span,
+.tunOptionGroup::before {
+  color: #4d5868;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.tunFormGrid input,
+.tunFormGrid select {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+}
+
+.tunOptionGroup .toggleSwitch {
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  min-width: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.tunOptionGroup .toggleSwitch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .tunDiagnostic {
   margin-top: 12px;
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid #f0cf75;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #f1c2bd;
   border-radius: 8px;
-  background: #fff8df;
-  color: #6f4d00;
+  background: #fff7f6;
+  color: #8a2c20;
 }
 
 .tunDiagnostic.ready {
   border-color: #8fd4ad;
-  background: #effbf5;
+  background: #f4fbf7;
   color: #0f693f;
 }
 
-.tunDiagnostic div {
+.tunDiagnosticHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tunDiagnosticHead div {
+  min-width: 0;
   display: grid;
   gap: 4px;
 }
 
 .tunDiagnostic small {
   color: inherit;
-  opacity: 0.78;
+  opacity: 0.72;
+}
+
+.tunCheckGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tunCheckGrid div {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(138, 44, 32, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.tunDiagnostic.ready .tunCheckGrid div {
+  border-color: rgba(15, 105, 63, 0.16);
+}
+
+.tunCheckGrid span {
+  color: inherit;
+  opacity: 0.72;
+  font-size: 12px;
+}
+
+.tunCheckGrid strong {
+  font-size: 13px;
 }
 
 .tunDiagnostic ul {
@@ -540,23 +890,49 @@ h1 {
   padding: 0;
 }
 
+.toastStack {
+  position: fixed;
+  top: 88px;
+  right: 22px;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 44px));
+}
+
 .notice,
 .message,
 .inlineError {
-  margin: 16px 24px 0;
+  margin: 0;
   padding: 12px;
   border: 1px solid #f0cf75;
   background: #fff8df;
   border-radius: 8px;
   color: #7a5600;
+  box-shadow: 0 14px 35px rgba(20, 32, 51, 0.12);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice.error {
+  border-color: #f1c2bd;
+  background: #fff7f6;
+  color: #b42318;
 }
 
 .message {
   margin: 0 0 12px;
+  border-color: #8fd4ad;
+  background: #f4fbf7;
+  color: #0f693f;
+  font-weight: 700;
 }
 
 .inlineError {
   margin: 0 0 12px;
+  border-color: #f1c2bd;
+  background: #fff7f6;
+  color: #b42318;
 }
 
 .inlineHint {
@@ -773,6 +1149,20 @@ select {
   border-color: #6ca0ff;
   background: #f3f7ff;
   color: #1457c8;
+}
+
+.currentChoice {
+  border-color: #d8dde6;
+  background: #f8fafc;
+  color: #4d5868;
+}
+
+.currentChoice::after {
+  content: '当前';
+  margin-left: 2px;
+  color: #687386;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .table {
@@ -1044,7 +1434,7 @@ select {
 }
 
 .ruleEditRow {
-  grid-template-columns: 48px minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   padding: 8px;
   border: 1px solid #edf0f4;
   border-radius: 8px;
@@ -1068,8 +1458,16 @@ select {
   gap: 5px;
 }
 
+.ruleEditActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .ruleEditRow input,
 .ruleEditRow select,
+.chipAdd select,
 .chipAdd input {
   min-width: 0;
   height: 34px;
@@ -1078,9 +1476,16 @@ select {
   padding: 0 10px;
 }
 
+.chipAdd select,
+.chipAdd input,
+.chipAdd button {
+  height: 36px;
+  min-height: 36px;
+}
+
 .ruleFields {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.3fr) minmax(130px, 0.8fr);
+  grid-template-columns: minmax(104px, 0.8fr) minmax(128px, 1.3fr) minmax(104px, 0.8fr);
   gap: 6px;
 }
 
@@ -1119,6 +1524,16 @@ select {
   margin-top: 12px;
   color: #93a4ba;
   font-size: 12px;
+}
+
+.sideStack {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.sideStack .serviceGrid {
+  grid-template-columns: 1fr;
 }
 
 .rulePreview span,
@@ -1189,7 +1604,7 @@ select {
 
 .chipAdd {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(190px, 1.15fr) minmax(112px, 0.85fr) auto;
   gap: 8px;
 }
 
@@ -1418,6 +1833,54 @@ select {
 .statusPill.bad {
   background: #fff1f0;
   color: #b42318;
+}
+
+.statusPill.warning {
+  background: #fff8df;
+  color: #8a5a00;
+}
+
+.serviceHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.serviceHeader div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.serviceHeader span:not(.statusPill) {
+  color: #687386;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.serviceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.serviceGrid .metric {
+  padding: 10px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.serviceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
 }
 
 .backupList {
@@ -1668,6 +2131,30 @@ textarea {
   }
 }
 
+@media (max-width: 1280px) {
+  .maintainGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .routeFlow,
+  .recipeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .maintainList,
+  .maintainList.tall,
+  .ruleList.compact {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 1400px) {
+  .tunSettingsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 920px) {
   .app {
     grid-template-columns: 1fr;
@@ -1708,12 +2195,30 @@ textarea {
 
   .grid,
   .split,
+  .guideGrid,
+  .routeFlow,
+  .recipeGrid,
   .topologyLayout,
   .maintainGrid,
   .currentProxyBox,
   .runtimeGrid,
   .providerSummary,
+  .serviceGrid,
   .connectionCard {
+    grid-template-columns: 1fr;
+  }
+
+  .guideHero,
+  .tunSettingsHeader,
+  .tunDiagnosticHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tunSettingsGrid,
+  .tunFormGrid.twoColumns,
+  .tunFormGrid.dnsRouteGrid,
+  .tunCheckGrid {
     grid-template-columns: 1fr;
   }
 
@@ -1727,6 +2232,11 @@ textarea {
   .chipAdd,
   .formGrid2 {
     grid-template-columns: 1fr;
+  }
+
+  .ruleEditActions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .topbar {

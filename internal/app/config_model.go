@@ -40,24 +40,25 @@ type configValidationIssue struct {
 }
 
 type tunConfig struct {
-	Enable bool     `json:"enable"`
-	Stack  string   `json:"stack,omitempty"`
-	Device string   `json:"device,omitempty"`
-	DNSHijack []string `json:"dnsHijack,omitempty"`
-	AutoRoute *bool    `json:"autoRoute,omitempty"`
-	AutoDetectInterface *bool `json:"autoDetectInterface,omitempty"`
+	Enable              bool     `json:"enable"`
+	Stack               string   `json:"stack,omitempty"`
+	Device              string   `json:"device,omitempty"`
+	DNSHijack           []string `json:"dnsHijack,omitempty"`
+	AutoRoute           *bool    `json:"autoRoute,omitempty"`
+	AutoDetectInterface *bool    `json:"autoDetectInterface,omitempty"`
 }
 
 type tunDiagnostics struct {
-	Config                tunConfig `json:"config"`
-	Runtime               tunConfig `json:"runtime"`
-	ServiceMode           string    `json:"serviceMode"`
-	HostTunExists         bool      `json:"hostTunExists"`
-	DockerDeviceMapped    bool      `json:"dockerDeviceMapped"`
-	DockerNetAdmin        bool      `json:"dockerNetAdmin"`
-	DockerPrivileged      bool      `json:"dockerPrivileged"`
-	Ready                 bool      `json:"ready"`
-	Notes                 []string  `json:"notes"`
+	Config             tunConfig `json:"config"`
+	Runtime            tunConfig `json:"runtime"`
+	RuntimeAvailable   bool      `json:"runtimeAvailable"`
+	ServiceMode        string    `json:"serviceMode"`
+	HostTunExists      bool      `json:"hostTunExists"`
+	DockerDeviceMapped bool      `json:"dockerDeviceMapped"`
+	DockerNetAdmin     bool      `json:"dockerNetAdmin"`
+	DockerPrivileged   bool      `json:"dockerPrivileged"`
+	Ready              bool      `json:"ready"`
+	Notes              []string  `json:"notes"`
 }
 
 var configNamePattern = regexp.MustCompile(`^[\p{L}\p{N} _.\-()!@]+$`)
@@ -69,10 +70,10 @@ func (s *Server) handleConfigModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"proxyGroups":   readProxyGroups(root),
+		"proxyGroups":    readProxyGroups(root),
 		"proxyProviders": readMappingKeys(root, "proxy-providers"),
-		"rules":         readRuleStrings(root),
-		"ruleProviders": readRuleProviders(root),
+		"rules":          readRuleStrings(root),
+		"ruleProviders":  readRuleProviders(root),
 	})
 }
 
@@ -118,11 +119,11 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 	diagnostics, diagErr := s.buildTunDiagnostics()
 	if diagErr != nil {
 		writeJSON(w, http.StatusAccepted, map[string]any{
-			"saved":        true,
-			"reloadStatus": status,
-			"reloadBody":   body,
-			"reloadError":  errorString(reloadErr),
-			"diagnostics":  nil,
+			"saved":           true,
+			"reloadStatus":    status,
+			"reloadBody":      body,
+			"reloadError":     errorString(reloadErr),
+			"diagnostics":     nil,
 			"diagnosticError": diagErr.Error(),
 		})
 		return
@@ -168,7 +169,7 @@ func (s *Server) handleUpsertProxyGroup(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
 }
 
@@ -183,7 +184,7 @@ func (s *Server) handleDeleteProxyGroup(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -209,7 +210,7 @@ func (s *Server) handleMoveProxyGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"moved": true})
 }
 
@@ -246,7 +247,7 @@ func (s *Server) handleAddConfigRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
 }
 
@@ -282,7 +283,7 @@ func (s *Server) handleUpdateConfigRule(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
 }
 
@@ -313,7 +314,7 @@ func (s *Server) handleMoveConfigRule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"moved": true})
 }
 
@@ -338,7 +339,7 @@ func (s *Server) handleDeleteConfigRule(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -375,7 +376,7 @@ func (s *Server) handleUpsertRuleProvider(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true})
 }
 
@@ -390,7 +391,7 @@ func (s *Server) handleDeleteRuleProvider(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = s.reloadMihomo()
+	_, _, _ = s.reloadMihomo()
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -776,9 +777,11 @@ func (s *Server) buildTunDiagnostics() (tunDiagnostics, error) {
 	}
 	if runtimeConfig, err := s.readRuntimeTunConfig(); err == nil {
 		diagnostics.Runtime = runtimeConfig
+		diagnostics.RuntimeAvailable = true
 	} else {
 		diagnostics.Notes = append(diagnostics.Notes, "runtime config read failed: "+err.Error())
 	}
+	environmentReady := false
 	if s.cfg.ServiceMode == "docker" {
 		mapped, netAdmin, privileged, err := inspectDockerTun(s.cfg.ContainerName)
 		diagnostics.DockerDeviceMapped = mapped
@@ -793,16 +796,20 @@ func (s *Server) buildTunDiagnostics() (tunDiagnostics, error) {
 		if !diagnostics.DockerNetAdmin && !diagnostics.DockerPrivileged {
 			diagnostics.Notes = append(diagnostics.Notes, "Docker container needs NET_ADMIN capability or privileged mode.")
 		}
-		diagnostics.Ready = diagnostics.HostTunExists && (diagnostics.DockerPrivileged || (diagnostics.DockerDeviceMapped && diagnostics.DockerNetAdmin))
+		environmentReady = diagnostics.HostTunExists && (diagnostics.DockerPrivileged || (diagnostics.DockerDeviceMapped && diagnostics.DockerNetAdmin))
 	} else {
 		if !diagnostics.HostTunExists {
 			diagnostics.Notes = append(diagnostics.Notes, "Host is missing /dev/net/tun.")
 		}
-		diagnostics.Ready = diagnostics.HostTunExists
+		environmentReady = diagnostics.HostTunExists
 	}
 	if !diagnostics.Config.Enable {
 		diagnostics.Notes = append(diagnostics.Notes, "TUN is disabled in config.yaml.")
 	}
+	if diagnostics.Config.Enable && diagnostics.RuntimeAvailable && !diagnostics.Runtime.Enable {
+		diagnostics.Notes = append(diagnostics.Notes, "TUN is enabled in config.yaml but not active in mihomo runtime.")
+	}
+	diagnostics.Ready = environmentReady && diagnostics.Config.Enable && diagnostics.RuntimeAvailable && diagnostics.Runtime.Enable
 	return diagnostics, nil
 }
 
@@ -853,30 +860,53 @@ func readTunConfig(node *yaml.Node) tunConfig {
 
 func applyTunConfig(root *yaml.Node, patch tunConfig) {
 	tun := ensureMapping(root, "tun")
+	existing := readTunConfig(tun)
+	patch = withTunDefaults(patch, existing)
 	setMappingValue(tun, "enable", boolScalar(patch.Enable))
-	if strings.TrimSpace(patch.Stack) != "" {
-		setMappingValue(tun, "stack", scalar(strings.TrimSpace(patch.Stack)))
-	} else if childScalar(tun, "stack") == "" {
-		setMappingValue(tun, "stack", scalar("system"))
-	}
+	setMappingValue(tun, "stack", scalar(patch.Stack))
 	if strings.TrimSpace(patch.Device) != "" {
-		setMappingValue(tun, "device", scalar(strings.TrimSpace(patch.Device)))
+		setMappingValue(tun, "device", scalar(patch.Device))
+	} else {
+		removeMappingKey(tun, "device")
 	}
-	if len(patch.DNSHijack) > 0 {
-		setMappingValue(tun, "dns-hijack", sequence(patch.DNSHijack))
-	} else if mappingValue(tun, "dns-hijack") == nil {
-		setMappingValue(tun, "dns-hijack", sequence([]string{"0.0.0.0:53"}))
+	setMappingValue(tun, "dns-hijack", sequence(patch.DNSHijack))
+	setMappingValue(tun, "auto-route", boolScalar(*patch.AutoRoute))
+	setMappingValue(tun, "auto-detect-interface", boolScalar(*patch.AutoDetectInterface))
+}
+
+func withTunDefaults(patch tunConfig, existing tunConfig) tunConfig {
+	patch.Stack = strings.TrimSpace(patch.Stack)
+	if patch.Stack == "" {
+		patch.Stack = strings.TrimSpace(existing.Stack)
 	}
-	if patch.AutoRoute != nil {
-		setMappingValue(tun, "auto-route", boolScalar(*patch.AutoRoute))
-	} else if mappingValue(tun, "auto-route") == nil {
-		setMappingValue(tun, "auto-route", boolScalar(true))
+	if patch.Stack == "" {
+		patch.Stack = "system"
 	}
-	if patch.AutoDetectInterface != nil {
-		setMappingValue(tun, "auto-detect-interface", boolScalar(*patch.AutoDetectInterface))
-	} else if mappingValue(tun, "auto-detect-interface") == nil {
-		setMappingValue(tun, "auto-detect-interface", boolScalar(true))
+	patch.Device = strings.TrimSpace(patch.Device)
+	if patch.Device == "" {
+		patch.Device = strings.TrimSpace(existing.Device)
 	}
+	if len(patch.DNSHijack) == 0 {
+		patch.DNSHijack = existing.DNSHijack
+	}
+	if len(patch.DNSHijack) == 0 {
+		patch.DNSHijack = []string{"0.0.0.0:53"}
+	}
+	if patch.AutoRoute == nil {
+		patch.AutoRoute = existing.AutoRoute
+	}
+	if patch.AutoRoute == nil {
+		value := true
+		patch.AutoRoute = &value
+	}
+	if patch.AutoDetectInterface == nil {
+		patch.AutoDetectInterface = existing.AutoDetectInterface
+	}
+	if patch.AutoDetectInterface == nil {
+		value := true
+		patch.AutoDetectInterface = &value
+	}
+	return patch
 }
 
 func inspectDockerTun(container string) (deviceMapped bool, netAdmin bool, privileged bool, err error) {
@@ -886,7 +916,7 @@ func inspectDockerTun(container string) (deviceMapped bool, netAdmin bool, privi
 	}
 	var payload []struct {
 		HostConfig struct {
-			Privileged bool `json:"Privileged"`
+			Privileged bool     `json:"Privileged"`
 			CapAdd     []string `json:"CapAdd"`
 			Devices    []struct {
 				PathOnHost        string `json:"PathOnHost"`
@@ -904,7 +934,8 @@ func inspectDockerTun(container string) (deviceMapped bool, netAdmin bool, privi
 	hostConfig := payload[0].HostConfig
 	privileged = hostConfig.Privileged
 	for _, cap := range hostConfig.CapAdd {
-		if strings.EqualFold(cap, "NET_ADMIN") {
+		normalized := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(cap)), "CAP_")
+		if normalized == "NET_ADMIN" {
 			netAdmin = true
 			break
 		}

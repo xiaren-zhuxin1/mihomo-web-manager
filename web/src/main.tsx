@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  BookOpen,
   Cable,
   Check,
   CircleX,
@@ -29,7 +30,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 
-type Page = 'overview' | 'topology' | 'maintenance' | 'traffic' | 'proxies' | 'connections' | 'logs' | 'subscriptions' | 'providers' | 'rules' | 'config' | 'service';
+type Page = 'overview' | 'guide' | 'topology' | 'maintenance' | 'traffic' | 'proxies' | 'connections' | 'logs' | 'subscriptions' | 'providers' | 'rules' | 'config';
 
 type Health = {
   ok: boolean;
@@ -104,6 +105,7 @@ type TunDiagnostics = {
     stack?: string;
     device?: string;
   };
+  runtimeAvailable?: boolean;
   serviceMode: string;
   hostTunExists: boolean;
   dockerDeviceMapped: boolean;
@@ -111,6 +113,14 @@ type TunDiagnostics = {
   dockerPrivileged: boolean;
   ready: boolean;
   notes: string[];
+};
+
+type TunForm = {
+  stack: string;
+  device: string;
+  dnsHijack: string;
+  autoRoute: boolean;
+  autoDetectInterface: boolean;
 };
 
 type MihomoVersion = {
@@ -285,14 +295,14 @@ function App() {
     ['traffic', Activity, '流量监控', '运行监控'],
     ['connections', List, '连接追踪', '运行监控'],
     ['logs', Terminal, '实时日志', '运行监控'],
+    ['guide', BookOpen, '路由向导', '代理路由'],
     ['proxies', Zap, '代理策略', '代理路由'],
     ['topology', ListTree, '路由拓扑', '代理路由'],
     ['rules', Globe2, '规则命中', '代理路由'],
     ['subscriptions', Cable, '订阅管理', '配置维护'],
     ['providers', ListTree, '节点 Provider', '配置维护'],
     ['maintenance', Settings2, '配置维护', '配置维护'],
-    ['config', FileCode2, '高级配置', '系统管理'],
-    ['service', Server, '服务控制', '系统管理']
+    ['config', FileCode2, '系统配置', '系统管理']
   ] as const;
 
   const activeTitle = nav.find(([id]) => id === page)?.[2] || '';
@@ -333,11 +343,16 @@ function App() {
           </button>
         </header>
 
-        {health?.managerTokenActive && <div className="notice">管理接口已启用鉴权。请通过反向代理或请求头注入 Authorization。</div>}
-        {error && <div className="notice">{error}</div>}
+        {(health?.managerTokenActive || error) && (
+          <div className="toastStack" role="status" aria-live="polite">
+            {health?.managerTokenActive && <div className="notice">管理接口已启用鉴权。请通过反向代理或请求头注入 Authorization。</div>}
+            {error && <div className="notice error">{error}</div>}
+          </div>
+        )}
 
         <section className="content">
           {page === 'overview' && <Overview health={health} onRefresh={refreshHealth} />}
+          {page === 'guide' && <RoutingGuide setPage={setPage} />}
           {page === 'topology' && <Topology setBusy={setBusy} />}
           {page === 'maintenance' && <Maintenance setBusy={setBusy} />}
           {page === 'traffic' && <Traffic setBusy={setBusy} />}
@@ -347,8 +362,7 @@ function App() {
           {page === 'subscriptions' && <Subscriptions setBusy={setBusy} />}
           {page === 'providers' && <Providers setBusy={setBusy} />}
           {page === 'rules' && <Rules setBusy={setBusy} />}
-          {page === 'config' && <ConfigEditor setBusy={setBusy} />}
-          {page === 'service' && <Service setBusy={setBusy} health={health} />}
+          {page === 'config' && <ConfigEditor setBusy={setBusy} health={health} />}
         </section>
       </main>
 
@@ -357,6 +371,106 @@ function App() {
           <RefreshCw size={18} />
         </div>
       )}
+    </div>
+  );
+}
+
+function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
+  return (
+    <div className="stack">
+      <section className="guideHero">
+        <div>
+          <span>新手路线</span>
+          <h2>先理解一条连接怎么被 mihomo 处理</h2>
+          <p>不用先背 YAML。你只要记住：规则决定去哪里，策略组决定怎么选节点，Provider 负责提供节点或规则集。</p>
+        </div>
+        <button className="primary" onClick={() => setPage('maintenance')}>
+          <Settings2 size={16} />
+          打开配置维护
+        </button>
+      </section>
+
+      <div className="routeFlow">
+        <div>
+          <strong>1. 连接进来</strong>
+          <span>浏览器、系统或 TUN 把请求交给 mihomo。</span>
+        </div>
+        <div>
+          <strong>2. 从上到下匹配规则</strong>
+          <span>例如 DOMAIN-SUFFIX,google.com,PROXY 命中后就去 PROXY。</span>
+        </div>
+        <div>
+          <strong>3. 进入策略组</strong>
+          <span>PROXY 可以手选节点，也可以引用订阅 Provider 自动拿节点。</span>
+        </div>
+        <div>
+          <strong>4. 最终落到节点</strong>
+          <span>连接真正从某个 Trojan、Vmess、Hysteria 等节点出去。</span>
+        </div>
+      </div>
+
+      <div className="guideGrid">
+        <Panel title="我应该先配什么？" icon={<BookOpen size={18} />}>
+          <div className="guideSteps">
+            <div>
+              <strong>第一步：订阅管理</strong>
+              <p>把订阅接进来，它会生成 proxy-provider。Provider 是“节点仓库”，不是实际分流规则。</p>
+              <button onClick={() => setPage('subscriptions')}>去订阅管理</button>
+            </div>
+            <div>
+              <strong>第二步：策略组</strong>
+              <p>创建或编辑 PROXY / AUTO / AI 这类策略组，把 provider 或固定节点放进去。规则只需要指向策略组。</p>
+              <button onClick={() => setPage('maintenance')}>编辑策略组</button>
+            </div>
+            <div>
+              <strong>第三步：规则</strong>
+              <p>规则的目标写 PROXY、DIRECT、REJECT 或你建的策略组。越具体的规则放越前，MATCH 放最后兜底。</p>
+              <button onClick={() => setPage('maintenance')}>编辑规则</button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="常见配置怎么理解？" icon={<ListTree size={18} />}>
+          <div className="conceptList">
+            <div>
+              <strong>proxy-provider</strong>
+              <span>远程订阅或本地节点文件。它只提供节点，不决定流量走向。</span>
+            </div>
+            <div>
+              <strong>proxy-groups</strong>
+              <span>策略组。规则命中后会进入这里，再由手选、测速、fallback 等方式决定具体节点。</span>
+            </div>
+            <div>
+              <strong>rules</strong>
+              <span>分流规则。从上到下匹配，命中第一条就停止。目标通常是策略组。</span>
+            </div>
+            <div>
+              <strong>rule-provider</strong>
+              <span>规则集仓库。配合 RULE-SET 使用，适合大量域名/IP 规则。</span>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="直接照着做的例子" icon={<Globe2 size={18} />}>
+        <div className="recipeGrid">
+          <div>
+            <strong>让 Google 走代理</strong>
+            <code>DOMAIN-SUFFIX,google.com,PROXY</code>
+            <span>目标 PROXY 是策略组，不一定是单个节点。</span>
+          </div>
+          <div>
+            <strong>让国内 IP 直连</strong>
+            <code>GEOIP,CN,DIRECT</code>
+            <span>DIRECT 是内置目标，表示不经过代理。</span>
+          </div>
+          <div>
+            <strong>兜底走代理</strong>
+            <code>MATCH,PROXY</code>
+            <span>放在最后，没命中的连接全部交给 PROXY。</span>
+          </div>
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -477,6 +591,8 @@ function RuntimeControls() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [version, setVersion] = useState<MihomoVersion | null>(null);
   const [tunDiagnostics, setTunDiagnostics] = useState<TunDiagnostics | null>(null);
+  const [tunForm, setTunForm] = useState<TunForm>(defaultTunForm());
+  const tunFormDirtyRef = useRef(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -490,6 +606,9 @@ function RuntimeControls() {
       setConfig(nextConfig);
       setVersion(nextVersion);
       setTunDiagnostics(nextTunDiagnostics);
+      if (!tunFormDirtyRef.current) {
+        setTunForm(tunFormFromDiagnostics(nextTunDiagnostics, nextConfig));
+      }
       setError('');
     } catch (err) {
       setError(readError(err));
@@ -498,6 +617,8 @@ function RuntimeControls() {
 
   useEffect(() => {
     load();
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const patchConfig = async (patch: Partial<RuntimeConfig>) => {
@@ -513,32 +634,50 @@ function RuntimeControls() {
     }
   };
 
-  const patchTun = async (enable: boolean) => {
+  const saveTunConfig = async (enable = Boolean(tunDiagnostics?.config?.enable ?? config?.tun?.enable)) => {
     try {
-      const stack = tunDiagnostics?.config?.stack || config?.tun?.stack || 'system';
       const response = await api<{ reloadStatus?: number; reloadBody?: string; reloadError?: string; diagnostics?: TunDiagnostics }>('/api/config/tun', {
         method: 'PATCH',
         body: JSON.stringify({
           enable,
-          stack,
-          dnsHijack: tunDiagnostics?.config?.dnsHijack?.length ? tunDiagnostics.config.dnsHijack : ['0.0.0.0:53'],
-          autoRoute: tunDiagnostics?.config?.autoRoute ?? true,
-          autoDetectInterface: tunDiagnostics?.config?.autoDetectInterface ?? true
+          stack: tunForm.stack || 'system',
+          device: tunForm.device.trim(),
+          dnsHijack: parseTunDnsHijack(tunForm.dnsHijack),
+          autoRoute: tunForm.autoRoute,
+          autoDetectInterface: tunForm.autoDetectInterface
         })
       });
       if (response.diagnostics) {
         setTunDiagnostics(response.diagnostics);
+        tunFormDirtyRef.current = false;
+        setTunForm(tunFormFromDiagnostics(response.diagnostics, config));
       }
       if (response.reloadError || (response.reloadStatus && response.reloadStatus >= 300)) {
         setError(readTunReloadError(response.reloadBody || response.reloadError || 'TUN 配置已写入，但 mihomo reload 失败'));
       } else {
-        setMessage(enable ? 'TUN 配置已写入并尝试重载' : 'TUN 已关闭');
+        setMessage(enable ? 'TUN 配置已写入并尝试启动' : 'TUN 已关闭');
         setError('');
       }
       await load();
     } catch (err) {
       setError(readError(err));
     }
+  };
+
+  const patchTun = async (enable: boolean) => {
+    await saveTunConfig(enable);
+  };
+
+  const tunConfigEnabled = Boolean(tunDiagnostics?.config?.enable ?? config?.tun?.enable);
+  const tunRuntimeEnabled = Boolean(tunDiagnostics?.runtimeAvailable && tunDiagnostics.runtime?.enable);
+  const tunSavedForm = tunFormFromDiagnostics(tunDiagnostics, config);
+  const tunFormDirty = !sameTunForm(tunForm, tunSavedForm);
+  const updateTunForm = (patch: Partial<TunForm>) => {
+    setTunForm((current) => {
+      const next = { ...current, ...patch };
+      tunFormDirtyRef.current = !sameTunForm(next, tunSavedForm);
+      return next;
+    });
   };
 
   return (
@@ -553,8 +692,9 @@ function RuntimeControls() {
               <Zap size={15} />
               {config?.mode === 'direct' ? '代理关闭' : '代理开启'}
             </button>
-            <label className="toggle">
-              <input type="checkbox" checked={Boolean(tunDiagnostics?.config?.enable ?? config?.tun?.enable)} onChange={(event) => patchTun(event.target.checked)} />
+            <label className={tunRuntimeEnabled ? 'toggle toggleSwitch checked' : 'toggle toggleSwitch'}>
+              <input type="checkbox" checked={tunRuntimeEnabled} onChange={(event) => patchTun(event.target.checked)} />
+              <span className="switchTrack" aria-hidden="true" />
               <span>TUN</span>
             </label>
           </div>
@@ -563,7 +703,7 @@ function RuntimeControls() {
           <span>模式</span>
           <div className="segmented">
             {['rule', 'global', 'direct'].map((mode) => (
-              <button key={mode} title={describeMode(mode)} className={config?.mode === mode ? 'activeMode' : ''} onClick={() => patchConfig({ mode })}>
+              <button key={mode} title={describeMode(mode)} className={config?.mode === mode ? 'currentChoice' : ''} disabled={config?.mode === mode} onClick={() => patchConfig({ mode })}>
                 {mode}
               </button>
             ))}
@@ -573,7 +713,7 @@ function RuntimeControls() {
           <span>日志级别</span>
           <div className="segmented">
             {['debug', 'info', 'warning', 'error', 'silent'].map((level) => (
-              <button key={level} title={describeLogLevel(level)} className={config?.['log-level'] === level ? 'activeMode' : ''} onClick={() => patchConfig({ 'log-level': level })}>
+              <button key={level} title={describeLogLevel(level)} className={config?.['log-level'] === level ? 'currentChoice' : ''} disabled={config?.['log-level'] === level} onClick={() => patchConfig({ 'log-level': level })}>
                 {level}
               </button>
             ))}
@@ -582,12 +722,14 @@ function RuntimeControls() {
         <div className="runtimeBlock">
           <span>开关</span>
           <div className="toggleRow">
-            <label className="toggle">
+            <label className={Boolean(config?.['allow-lan']) ? 'toggle toggleSwitch checked' : 'toggle toggleSwitch'}>
               <input type="checkbox" checked={Boolean(config?.['allow-lan'])} onChange={(event) => patchConfig({ 'allow-lan': event.target.checked })} />
+              <span className="switchTrack" aria-hidden="true" />
               <span>Allow LAN</span>
             </label>
-            <label className="toggle">
+            <label className={Boolean(config?.ipv6) ? 'toggle toggleSwitch checked' : 'toggle toggleSwitch'}>
               <input type="checkbox" checked={Boolean(config?.ipv6)} onChange={(event) => patchConfig({ ipv6: event.target.checked })} />
+              <span className="switchTrack" aria-hidden="true" />
               <span>IPv6</span>
             </label>
           </div>
@@ -609,19 +751,98 @@ function RuntimeControls() {
         <div className="runtimeBlock">
           <span>TUN</span>
           <div className="runtimeFacts">
-            <strong>{tunDiagnostics?.config?.enable ? 'config enabled' : 'config disabled'}</strong>
-            <small>runtime {tunDiagnostics?.runtime?.enable ? 'enabled' : 'disabled'} · {tunDiagnostics?.config?.stack || config?.tun?.stack || '-'}</small>
+            <strong>{tunRuntimeEnabled ? 'runtime enabled' : 'runtime disabled'}</strong>
+            <small>config {tunConfigEnabled ? 'enabled' : 'disabled'} · {tunDiagnostics?.config?.stack || config?.tun?.stack || '-'}</small>
           </div>
         </div>
       </div>
+      <div className="tunSettings">
+        <div className="tunSettingsHeader">
+          <div>
+            <strong>TUN 参数</strong>
+            <span>开启时如果 config.yaml 没有 tun 节点，会自动写入这些参数并重载 mihomo。</span>
+          </div>
+          <button className={tunFormDirty ? 'primary' : ''} disabled={!tunFormDirty} onClick={() => saveTunConfig(tunConfigEnabled)}>保存 TUN 配置</button>
+        </div>
+        <div className="tunSettingsGrid">
+          <section className="tunFieldset">
+            <div className="tunFieldsetTitle">
+              <strong>设备与协议栈</strong>
+              <span>决定 TUN 设备如何创建，以及使用哪种网络栈接管流量。</span>
+            </div>
+            <div className="tunFormGrid twoColumns">
+              <label>
+                <span>Stack</span>
+                <select value={tunForm.stack} onChange={(event) => updateTunForm({ stack: event.target.value })}>
+                  <option value="system">system</option>
+                  <option value="gvisor">gvisor</option>
+                  <option value="mixed">mixed</option>
+                </select>
+                <small>Linux 通常选 system；容器兼容性异常时再尝试 gvisor 或 mixed。</small>
+              </label>
+              <label>
+                <span>Device</span>
+                <input value={tunForm.device} placeholder="留空使用 mihomo 默认" onChange={(event) => updateTunForm({ device: event.target.value })} />
+                <small>TUN 设备名。留空时不写入 device 字段，由 mihomo 自行决定。</small>
+              </label>
+            </div>
+          </section>
+          <section className="tunFieldset">
+            <div className="tunFieldsetTitle">
+              <strong>路由与 DNS</strong>
+              <span>这组参数控制系统流量和 DNS 请求是否自动进入 mihomo。</span>
+            </div>
+            <div className="tunFormGrid dnsRouteGrid">
+              <label className="wideTunField">
+                <span>DNS Hijack</span>
+                <input value={tunForm.dnsHijack} placeholder="0.0.0.0:53" onChange={(event) => updateTunForm({ dnsHijack: event.target.value })} />
+                <small>多个地址用逗号分隔，例如 0.0.0.0:53, ::1:53。</small>
+              </label>
+              <div className="tunOptionGroup">
+                <label className={tunForm.autoRoute ? 'toggle toggleSwitch checked' : 'toggle toggleSwitch'}>
+                  <input type="checkbox" checked={tunForm.autoRoute} onChange={(event) => updateTunForm({ autoRoute: event.target.checked })} />
+                  <span className="switchTrack" aria-hidden="true" />
+                  <span>Auto Route</span>
+                </label>
+                <small>自动添加路由，让系统流量进入 TUN。</small>
+              </div>
+              <div className="tunOptionGroup">
+                <label className={tunForm.autoDetectInterface ? 'toggle toggleSwitch checked' : 'toggle toggleSwitch'}>
+                  <input type="checkbox" checked={tunForm.autoDetectInterface} onChange={(event) => updateTunForm({ autoDetectInterface: event.target.checked })} />
+                  <span className="switchTrack" aria-hidden="true" />
+                  <span>Auto Interface</span>
+                </label>
+                <small>自动检测出口网卡，避免手动指定 interface-name。</small>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
       <div className={tunDiagnostics?.ready ? 'tunDiagnostic ready' : 'tunDiagnostic'}>
-        <div>
-          <strong>{tunDiagnostics?.ready ? 'TUN 环境就绪' : 'TUN 环境未就绪'}</strong>
-          <small>
-            {tunDiagnostics?.serviceMode === 'docker'
-              ? `Docker: /dev/net/tun ${tunDiagnostics?.dockerDeviceMapped || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'} · NET_ADMIN ${tunDiagnostics?.dockerNetAdmin || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'}`
-              : `/dev/net/tun ${tunDiagnostics?.hostTunExists ? 'OK' : '缺失'}`}
-          </small>
+        <div className="tunDiagnosticHead">
+          <div>
+            <strong>{tunDiagnostics?.ready ? 'TUN 环境就绪' : 'TUN 环境需要处理'}</strong>
+            <small>{tunDiagnostics?.ready ? '设备映射、权限和运行配置都已通过检查。' : '下面列出启动 TUN 前需要确认的项目。'}</small>
+          </div>
+          <span className={tunDiagnostics?.ready ? 'statusPill good' : 'statusPill warning'}>{tunDiagnostics?.ready ? 'Ready' : 'Attention'}</span>
+        </div>
+        <div className="tunCheckGrid">
+          <div>
+            <span>/dev/net/tun</span>
+            <strong>{tunDiagnostics?.serviceMode === 'docker'
+              ? tunDiagnostics?.dockerDeviceMapped || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'
+              : tunDiagnostics?.hostTunExists ? 'OK' : '缺失'}</strong>
+          </div>
+          <div>
+            <span>NET_ADMIN</span>
+            <strong>{tunDiagnostics?.serviceMode === 'docker'
+              ? tunDiagnostics?.dockerNetAdmin || tunDiagnostics?.dockerPrivileged ? 'OK' : '缺失'
+              : '主机模式'}</strong>
+          </div>
+          <div>
+            <span>Runtime</span>
+            <strong>{tunRuntimeEnabled ? 'enabled' : 'disabled'}</strong>
+          </div>
         </div>
         {tunDiagnostics?.notes?.length ? (
           <ul>
@@ -1172,18 +1393,20 @@ function RuleEditorRow({
           <strong>{parsed.target || '-'}</strong>
         </div>
       </div>
-      <button className="iconButton" title="保存规则" onClick={() => onSave(index, value)} disabled={!isValid}>
-        <Save size={15} />
-      </button>
-      <button className="iconButton" title="上移规则" onClick={() => onMove(index, 'up')}>
-        <ArrowUp size={15} />
-      </button>
-      <button className="iconButton" title="下移规则" onClick={() => onMove(index, 'down')}>
-        <ArrowDown size={15} />
-      </button>
-      <button className="iconButton danger" title="删除规则" onClick={() => onDelete(index)}>
-        <Trash2 size={15} />
-      </button>
+      <div className="ruleEditActions">
+        <button className="iconButton" title="保存规则" onClick={() => onSave(index, value)} disabled={!isValid}>
+          <Save size={15} />
+        </button>
+        <button className="iconButton" title="上移规则" onClick={() => onMove(index, 'up')}>
+          <ArrowUp size={15} />
+        </button>
+        <button className="iconButton" title="下移规则" onClick={() => onMove(index, 'down')}>
+          <ArrowDown size={15} />
+        </button>
+        <button className="iconButton danger" title="删除规则" onClick={() => onDelete(index)}>
+          <Trash2 size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -2212,7 +2435,7 @@ function ProviderCards({
   );
 }
 
-function ConfigEditor({ setBusy }: { setBusy: (busy: boolean) => void }) {
+function ConfigEditor({ setBusy, health }: { setBusy: (busy: boolean) => void; health: Health | null }) {
   const [content, setContent] = useState('');
   const [backups, setBackups] = useState<ConfigBackup[]>([]);
   const [selectedBackup, setSelectedBackup] = useState('');
@@ -2341,45 +2564,49 @@ function ConfigEditor({ setBusy }: { setBusy: (busy: boolean) => void }) {
           </div>
         )}
       </Panel>
-      <Panel title={`备份 (${backups.length})`} icon={<DatabaseBackup size={18} />}>
-        <div className="toolbar">
-          <button onClick={backup}>
-            <DatabaseBackup size={16} />
-            创建备份
-          </button>
-          <button onClick={() => loadBackups().catch((err) => setError(readError(err)))}>
-            <RefreshCw size={16} />
-            刷新
-          </button>
-        </div>
-        <div className="backupList">
-          {backups.map((item) => (
-            <div className={selectedBackup === item.name ? 'backupCard selected' : 'backupCard'} key={item.name}>
-              <div>
-                <strong>{item.name}</strong>
-                <span>{formatDate(item.modifiedAt)} · {formatBytes(item.size)}</span>
+      <div className="sideStack">
+        <Service setBusy={setBusy} health={health} />
+        <Panel title={`备份 (${backups.length})`} icon={<DatabaseBackup size={18} />}>
+          <div className="toolbar">
+            <button onClick={backup}>
+              <DatabaseBackup size={16} />
+              创建备份
+            </button>
+            <button onClick={() => loadBackups().catch((err) => setError(readError(err)))}>
+              <RefreshCw size={16} />
+              刷新
+            </button>
+          </div>
+          <div className="backupList">
+            {backups.map((item) => (
+              <div className={selectedBackup === item.name ? 'backupCard selected' : 'backupCard'} key={item.name}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>{formatDate(item.modifiedAt)} · {formatBytes(item.size)}</span>
+                </div>
+                <div className="backupActions">
+                  <button onClick={() => viewBackup(item.name)}>
+                    <FileCode2 size={16} />
+                    查看
+                  </button>
+                  <button className="danger" onClick={() => restoreBackup(item.name)}>
+                    <RotateCcw size={16} />
+                    恢复
+                  </button>
+                </div>
               </div>
-              <div className="backupActions">
-                <button onClick={() => viewBackup(item.name)}>
-                  <FileCode2 size={16} />
-                  查看
-                </button>
-                <button className="danger" onClick={() => restoreBackup(item.name)}>
-                  <RotateCcw size={16} />
-                  恢复
-                </button>
-              </div>
-            </div>
-          ))}
-          {backups.length === 0 && <p className="empty">还没有配置备份</p>}
-        </div>
-      </Panel>
+            ))}
+            {backups.length === 0 && <p className="empty">还没有配置备份</p>}
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
 
 function Service({ setBusy, health }: { setBusy: (busy: boolean) => void; health: Health | null }) {
   const [status, setStatus] = useState('');
+  const [active, setActive] = useState<boolean | null>(null);
   const [error, setError] = useState('');
 
   const call = async (action?: string) => {
@@ -2389,6 +2616,7 @@ function Service({ setBusy, health }: { setBusy: (busy: boolean) => void; health
         await api(`/api/service/${action}`, { method: 'POST', body: '{}' });
       }
       const data = await api<{ active: boolean; output: string; error: string }>('/api/service/status');
+      setActive(data.active);
       setStatus(`${data.active ? 'active' : 'inactive'} ${data.output || ''} ${data.error || ''}`.trim());
       setError('');
     } catch (err) {
@@ -2403,27 +2631,39 @@ function Service({ setBusy, health }: { setBusy: (busy: boolean) => void; health
   }, []);
 
   return (
-    <Panel title={health?.serviceMode === 'docker' ? 'mihomo container' : 'mihomo.service'} icon={<Terminal size={18} />}>
+    <Panel title="服务与运行" icon={<Terminal size={18} />}>
+      <div className="serviceHeader">
+        <div>
+          <strong>{health?.serviceMode === 'docker' ? 'mihomo container' : 'mihomo.service'}</strong>
+          <span>{status || '正在读取服务状态'}</span>
+        </div>
+        <span className={active ? 'statusPill good' : 'statusPill warning'}>{active ? 'Active' : 'Inactive'}</span>
+      </div>
       {error && <p className="inlineError">{error}</p>}
-      <Metric label="状态" value={status || '-'} />
-      <div className="toolbar">
-        <button className="primary" onClick={() => call('start')}>
+      <div className="serviceGrid">
+        <Metric label="模式" value={health?.serviceMode || '-'} />
+        <Metric label="控制器" value={health?.mihomoController || '-'} />
+        <Metric label="配置" value={health?.mihomoConfigPath || '-'} />
+      </div>
+      <div className="serviceActions">
+        <button className="primary" onClick={() => call('start')} disabled={active === true}>
           <Play size={16} />
           启动
         </button>
-        <button className="danger" onClick={() => call('stop')}>
-          <Square size={16} />
-          停止
+        <button onClick={() => call('reload')} disabled={active === false}>
+          <RefreshCw size={16} />
+          Reload 配置
         </button>
         <button onClick={() => call('restart')}>
           <RotateCcw size={16} />
-          重启
+          重启服务
         </button>
-        <button onClick={() => call('reload')}>
-          <RefreshCw size={16} />
-          Reload
+        <button className="danger" onClick={() => call('stop')} disabled={active === false}>
+          <Square size={16} />
+          停止
         </button>
       </div>
+      <p className="inlineHint">这里合并到系统配置页：日常只需要 reload 或重启；停止会让代理服务不可用，按钮会根据实时状态禁用。</p>
     </Panel>
   );
 }
@@ -2464,6 +2704,41 @@ function readError(err: unknown) {
     return '未授权：当前 WebUI 不再内置 token 输入框，请关闭 MWM_TOKEN，或通过反向代理注入 Authorization。';
   }
   return text;
+}
+
+function defaultTunForm(): TunForm {
+  return {
+    stack: 'system',
+    device: '',
+    dnsHijack: '0.0.0.0:53',
+    autoRoute: true,
+    autoDetectInterface: true
+  };
+}
+
+function tunFormFromDiagnostics(diagnostics: TunDiagnostics | null, config: RuntimeConfig | null): TunForm {
+  const defaults = defaultTunForm();
+  const dnsHijack = diagnostics?.config?.dnsHijack?.length ? diagnostics.config.dnsHijack.join(', ') : defaults.dnsHijack;
+  return {
+    stack: diagnostics?.config?.stack || config?.tun?.stack || defaults.stack,
+    device: diagnostics?.config?.device || config?.tun?.device || '',
+    dnsHijack,
+    autoRoute: diagnostics?.config?.autoRoute ?? defaults.autoRoute,
+    autoDetectInterface: diagnostics?.config?.autoDetectInterface ?? defaults.autoDetectInterface
+  };
+}
+
+function parseTunDnsHijack(value: string) {
+  const items = value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+  return items.length ? items : ['0.0.0.0:53'];
+}
+
+function sameTunForm(left: TunForm, right: TunForm) {
+  return left.stack === right.stack
+    && left.device.trim() === right.device.trim()
+    && parseTunDnsHijack(left.dnsHijack).join(',') === parseTunDnsHijack(right.dnsHijack).join(',')
+    && left.autoRoute === right.autoRoute
+    && left.autoDetectInterface === right.autoDetectInterface;
 }
 
 function readTunReloadError(value: string) {
