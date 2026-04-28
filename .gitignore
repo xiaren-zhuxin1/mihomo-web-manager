@@ -6,6 +6,15 @@ web/node_modules/
 web/tsconfig.tsbuildinfo
 *.log
 *.exe
+mihomo-manager
+
+check_*.py
+deploy_*.py
+restart_*.py
+test_*.py
+verify_*.py
+run_tests.bat
+deploy.config.md
 
 # Local environment files
 .env

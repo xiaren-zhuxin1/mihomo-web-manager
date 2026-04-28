@@ -2749,6 +2749,12 @@ function readTunReloadError(value: string) {
   if (text.includes('operation not permitted') || text.includes('permission denied')) {
     return 'TUN 配置已写入，但 mihomo 权限不足。请检查容器 NET_ADMIN/privileged 或主机运行权限。';
   }
+  if (text.includes('device or resource busy') || text.includes('device busy')) {
+    return 'TUN 设备已被占用，系统已自动重启 mihomo 服务。';
+  }
+  if (text.includes('address already in use') || text.includes('already exists')) {
+    return 'TUN 接口已存在。请检查是否有其他 TUN 接口冲突，或尝试指定不同的设备名称。';
+  }
   return text;
 }
 

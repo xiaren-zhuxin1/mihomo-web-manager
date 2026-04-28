@@ -116,6 +116,21 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, body, reloadErr := s.reloadMihomo()
+
+	var restartErr error
+	if reloadErr != nil && strings.Contains(body, "device or resource busy") {
+		if s.cfg.ServiceMode == "docker" {
+			_, restartErr = runDocker("restart", s.cfg.ContainerName)
+		} else {
+			_, restartErr = runSystemctl("restart", "mihomo")
+		}
+		if restartErr == nil {
+			reloadErr = nil
+			status = 200
+			body = ""
+		}
+	}
+
 	diagnostics, diagErr := s.buildTunDiagnostics()
 	if diagErr != nil {
 		writeJSON(w, http.StatusAccepted, map[string]any{
@@ -123,6 +138,7 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 			"reloadStatus":    status,
 			"reloadBody":      body,
 			"reloadError":     errorString(reloadErr),
+			"restartError":    errorString(restartErr),
 			"diagnostics":     nil,
 			"diagnosticError": diagErr.Error(),
 		})
@@ -134,6 +150,7 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 			"reloadStatus": status,
 			"reloadBody":   body,
 			"reloadError":  errorString(reloadErr),
+			"restartError": errorString(restartErr),
 			"diagnostics":  diagnostics,
 		})
 		return
