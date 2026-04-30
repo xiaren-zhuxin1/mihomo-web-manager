@@ -5,10 +5,12 @@ import { api } from '../../services/api';
 import { formatDelay, delayClass, latestDelay, readError, isDelayTestable } from '../../utils/helpers';
 import type { ProxyGroup, ProxyNode } from '../../types';
 
+const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
+
 export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
   const [proxyMap, setProxyMap] = useState<Record<string, ProxyNode>>({});
-  const [selectedGroup, setSelectedGroup] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState(() => localStorage.getItem(PROXY_GROUP_KEY) || '');
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'delay'>('delay');
   const [error, setError] = useState('');
@@ -21,7 +23,12 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       const next = Object.values(data.proxies).filter((proxy) => Array.isArray(proxy.all) && proxy.all.length > 0);
       setProxyMap(data.proxies || {});
       setGroups(next);
-      setSelectedGroup((current) => current || next[0]?.name || '');
+      const saved = localStorage.getItem(PROXY_GROUP_KEY);
+      const exists = saved && next.some((g) => g.name === saved);
+      setSelectedGroup((current) => {
+        if (exists) return saved || '';
+        return current || next[0]?.name || '';
+      });
       setError('');
     } catch (err) {
       setError(readError(err));
@@ -33,6 +40,12 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (selectedGroup) {
+      localStorage.setItem(PROXY_GROUP_KEY, selectedGroup);
+    }
+  }, [selectedGroup]);
 
   const loadGeoForNode = async (proxyName: string) => {
     if (geoCache[proxyName]) return;
