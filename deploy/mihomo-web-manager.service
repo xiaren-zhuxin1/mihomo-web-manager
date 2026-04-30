@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=eric
 WorkingDirectory=/opt/mihomo-web-manager
 EnvironmentFile=/opt/mihomo-web-manager/mihomo-web-manager.env
 ExecStart=/opt/mihomo-web-manager/mihomo-manager
 Restart=on-failure
-RestartSec=3
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
