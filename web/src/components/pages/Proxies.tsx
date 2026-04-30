@@ -167,7 +167,7 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       <Panel title={group ? `${group.name} · ${group.type} · ${group.all?.length || 0} 节点` : '节点'} icon={<Activity size={18} />}>
         {error && <p className="inlineError">{error}</p>}
         {group && selectableGroup && <p className="inlineHint">点击节点卡片即可选用。当前策略组支持手动选择节点。</p>}
-        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核会根据策略自动切换节点。你仍可手动选用节点覆盖自动选择。</p>}
+        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核根据策略自动切换节点。仅 Selector/Compatible 类型支持手动选用。</p>}
         {group && !selectableGroup && !autoGroup && <p className="inlineHint">当前策略组类型为 {group.type}，不支持手动选用节点。</p>}
         <div className="toolbar">
           <input className="searchInput" placeholder="筛选节点或类型" value={filter} onChange={(event) => setFilter(event.target.value)} />
@@ -184,7 +184,7 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
         <div className="nodeCardGrid">
           {nodes.map((node) => {
             const isSelected = group?.now === node.name;
-            const canSelect = selectableGroup || autoGroup;
+            const canSelect = selectableGroup;
             return (
               <div
                 key={node.name}
