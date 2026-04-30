@@ -51,6 +51,7 @@ type ProxyGroup = {
   alive?: boolean;
   extra?: Record<string, unknown>;
   history?: Array<{ time: string; delay: number }>;
+  region?: string;
 };
 
 type ProxyNode = ProxyGroup & {
@@ -306,6 +307,7 @@ function App() {
   ] as const;
 
   const activeTitle = nav.find(([id]) => id === page)?.[2] || '';
+  const activeGroup = nav.find(([id]) => id === page)?.[3] || '';
 
   return (
     <div className="app">
@@ -1414,6 +1416,7 @@ function RuleEditorRow({
 function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
   const [proxyMap, setProxyMap] = useState<Record<string, ProxyNode>>({});
+  const [regionMap, setRegionMap] = useState<Record<string, string>>({});
   const [selectedGroup, setSelectedGroup] = useState('');
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'delay'>('delay');
@@ -1435,8 +1438,18 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
+  const loadRegions = async () => {
+    try {
+      const data = await api<{ regions: Record<string, string>; cached: boolean }>('/api/proxy-regions');
+      if (data.regions) {
+        setRegionMap(data.regions);
+      }
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     load();
+    loadRegions();
   }, []);
 
   const group = groups.find((item) => item.name === selectedGroup);
@@ -1560,6 +1573,7 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                 <span className="badge">{node.type || 'Unknown'}</span>
                 {node.udp && <span className="badge">UDP</span>}
                 {node.providerName && <span className="badge">{node.providerName}</span>}
+                {(regionMap[node.name] || nodeRegion(node.name)) && <span className="badge region">{regionMap[node.name] || nodeRegion(node.name)}</span>}
                 <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
               </div>
               <div className="nodeActions">
@@ -2982,6 +2996,11 @@ function formatDelay(node: ProxyNode) {
   const delay = latestDelay(node);
   if (delay === Number.MAX_SAFE_INTEGER) return '- ms';
   return `${delay} ms`;
+}
+
+function nodeRegion(name: string) {
+  const m = name.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+  return m ? m[0] : '';
 }
 
 function isDelayTestable(node?: ProxyNode) {

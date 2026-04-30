@@ -5,6 +5,16 @@
     sans-serif;
   background: #eef2f7;
   color: #142033;
+  --primary: #1f6feb;
+  --primary-light: #6ca0ff;
+  --success: #2fa36b;
+  --warning: #b54708;
+  --danger: #b42318;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --shadow-sm: 0 2px 8px rgba(20, 32, 51, 0.06);
+  --shadow-md: 0 8px 20px rgba(20, 32, 51, 0.08);
+  --shadow-lg: 0 18px 45px rgba(20, 32, 51, 0.12);
 }
 
 * {
@@ -38,16 +48,25 @@ button {
   justify-content: center;
   gap: 8px;
   padding: 0 12px;
+  transition: all var(--transition-fast);
 }
 
 button:hover {
   border-color: #6f8db8;
-  box-shadow: 0 8px 20px rgba(20, 32, 51, 0.08);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
 button:disabled {
   cursor: default;
   box-shadow: none;
+  transform: none;
+  opacity: 0.6;
 }
 
 button:disabled:hover {
@@ -827,10 +846,15 @@ h1 {
 .panel {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(213, 221, 234, 0.9);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 16px;
   min-width: 0;
-  box-shadow: 0 18px 45px rgba(20, 32, 51, 0.07);
+  box-shadow: var(--shadow-lg);
+  transition: box-shadow var(--transition-normal), transform var(--transition-normal);
+}
+
+.panel:hover {
+  box-shadow: 0 22px 55px rgba(20, 32, 51, 0.1);
 }
 
 .panelTitle {
@@ -868,15 +892,27 @@ h1 {
 }
 
 .primary {
-  background: #1f6feb;
+  background: var(--primary);
   color: #ffffff;
-  border-color: #1f6feb;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.3);
+}
+
+.primary:hover {
+  background: #1a5bd9;
+  border-color: #1a5bd9;
+  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.4);
 }
 
 .danger {
-  color: #b42318;
+  color: var(--danger);
   border-color: #f1c2bd;
   background: #fff7f6;
+}
+
+.danger:hover {
+  background: #feecea;
+  border-color: #e8a9a2;
 }
 
 .compactButton {
@@ -1043,6 +1079,13 @@ h1 {
   color: #4d5868;
   background: #ffffff;
   font-size: 11px;
+}
+
+.badge.region {
+  border-color: #c7d9f5;
+  background: #f0f5ff;
+  font-size: 13px;
+  padding: 0 4px;
 }
 
 .delay {

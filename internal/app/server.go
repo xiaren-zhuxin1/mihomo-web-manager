@@ -53,6 +53,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.auth(s.handleDeleteSubscription))
 	mux.HandleFunc("GET /api/service/status", s.auth(s.handleServiceStatus))
 	mux.HandleFunc("POST /api/service/{action}", s.auth(s.handleServiceAction))
+	mux.HandleFunc("GET /api/proxy-regions", s.auth(s.handleProxyRegions))
 	mux.HandleFunc("/api/mihomo/", s.auth(s.handleMihomoProxy))
 
 	fileServer := http.FileServer(http.Dir(s.cfg.WebDir))

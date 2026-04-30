@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -118,13 +119,24 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 	status, body, reloadErr := s.reloadMihomo()
 
 	var restartErr error
-	if reloadErr != nil && strings.Contains(body, "device or resource busy") {
+	shouldRestart := reloadErr != nil && strings.Contains(body, "device or resource busy")
+	
+	if !shouldRestart && payload.Enable && reloadErr == nil && status < 300 {
+		time.Sleep(500 * time.Millisecond)
+		diag, diagErr := s.buildTunDiagnostics()
+		if diagErr == nil && diag.Config.Enable && !diag.Runtime.Enable {
+			shouldRestart = true
+		}
+	}
+	
+	if shouldRestart {
 		if s.cfg.ServiceMode == "docker" {
 			_, restartErr = runDocker("restart", s.cfg.ContainerName)
 		} else {
 			_, restartErr = runSystemctl("restart", "mihomo")
 		}
 		if restartErr == nil {
+			time.Sleep(2 * time.Second)
 			reloadErr = nil
 			status = 200
 			body = ""

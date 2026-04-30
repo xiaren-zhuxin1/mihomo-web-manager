@@ -2,6 +2,7 @@ package app
 
 import (
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -563,6 +564,24 @@ func (s *Server) writeProviderFile(item Subscription, data []byte) error {
 }
 
 func normalizeProviderContent(data []byte) ([]byte, error) {
+	decoded := decodeBase64Content(data)
+	if decoded != nil {
+		proxies := parseURIProxies(decoded)
+		if len(proxies) > 0 {
+			proxies = deduplicateProxyNames(proxies)
+			for i := range proxies {
+				proxies[i]["skip-cert-verify"] = true
+			}
+			doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					scalar("proxies"), proxiesToYAML(proxies),
+				},
+			}}}
+			return yaml.Marshal(&doc)
+		}
+	}
+
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("subscription is not valid yaml: %w", err)
@@ -575,15 +594,430 @@ func normalizeProviderContent(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("subscription yaml must be a mapping")
 	}
 	if proxies := mappingValue(body, "proxies"); proxies != nil {
+		deduped := deduplicateYAMLProxies(proxies)
 		doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{
 			Kind: yaml.MappingNode,
 			Content: []*yaml.Node{
-				scalar("proxies"), proxies,
+				scalar("proxies"), deduped,
 			},
 		}}}
 		return yaml.Marshal(&doc)
 	}
 	return data, nil
+}
+
+func decodeBase64Content(data []byte) []byte {
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(text)
+		if err != nil {
+			return nil
+		}
+	}
+	content := string(decoded)
+	if strings.HasPrefix(content, "vless://") || strings.HasPrefix(content, "vmess://") ||
+		strings.HasPrefix(content, "ss://") || strings.HasPrefix(content, "trojan://") ||
+		strings.HasPrefix(content, "ssr://") {
+		return []byte(content)
+	}
+	return nil
+}
+
+func parseURIProxies(data []byte) []map[string]any {
+	lines := strings.Split(string(data), "\n")
+	var proxies []map[string]any
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "vless://") {
+			proxy := parseVlessURI(line)
+			if proxy != nil {
+				proxies = append(proxies, proxy)
+			}
+		} else if strings.HasPrefix(line, "vmess://") {
+			proxy := parseVmessURI(line)
+			if proxy != nil {
+				proxies = append(proxies, proxy)
+			}
+		} else if strings.HasPrefix(line, "ss://") {
+			proxy := parseSSURI(line)
+			if proxy != nil {
+				proxies = append(proxies, proxy)
+			}
+		} else if strings.HasPrefix(line, "trojan://") {
+			proxy := parseTrojanURI(line)
+			if proxy != nil {
+				proxies = append(proxies, proxy)
+			}
+		}
+	}
+	return proxies
+}
+
+func parseVlessURI(uri string) map[string]any {
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return nil
+	}
+	params := parsed.Query()
+
+	name := ""
+	if frag := parsed.Fragment; frag != "" {
+		name, _ = url.QueryUnescape(frag)
+	} else if n := params.Get("name"); n != "" {
+		name, _ = url.QueryUnescape(n)
+	}
+	if name == "" {
+		name = fmt.Sprintf("vless-%s:%d", parsed.Hostname(), parsed.Port())
+	}
+
+	proxy := map[string]any{
+		"name":                name,
+		"type":                "vless",
+		"server":              parsed.Hostname(),
+		"port":                parsed.Port(),
+		"uuid":                parsed.User.Username(),
+		"skip-cert-verify":    true,
+	}
+
+	if flow := params.Get("flow"); flow != "" {
+		proxy["flow"] = flow
+	}
+
+	security := params.Get("security")
+	if security == "tls" || security == "reality" {
+		proxy["tls"] = true
+		if sni := params.Get("sni"); sni != "" {
+			proxy["servername"] = sni
+		}
+		if fp := params.Get("fp"); fp != "" {
+			proxy["client-fingerprint"] = fp
+		}
+	}
+
+	netType := params.Get("type")
+	if netType == "ws" {
+		path, _ := url.QueryUnescape(params.Get("path"))
+		if path == "" {
+			path = "/"
+		}
+		host := params.Get("host")
+		if host == "" {
+			host = parsed.Hostname()
+		}
+		proxy["network"] = "ws"
+		proxy["ws-opts"] = map[string]any{
+			"path":    path,
+			"headers": map[string]string{"Host": host},
+		}
+	} else if netType == "grpc" {
+		path := params.Get("path")
+		proxy["network"] = "grpc"
+		proxy["grpc-opts"] = map[string]any{
+			"grpc-service-name": strings.TrimPrefix(path, "/"),
+		}
+	}
+
+	return proxy
+}
+
+func parseVmessURI(uri string) map[string]any {
+	encoded := strings.TrimPrefix(uri, "vmess://")
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(encoded)
+		if err != nil {
+			decoded, err = base64.StdEncoding.DecodeString(encoded + "==")
+			if err != nil {
+				return nil
+			}
+		}
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(decoded, &config); err != nil {
+		return nil
+	}
+
+	name, _ := config["ps"].(string)
+	if name == "" {
+		name = fmt.Sprintf("vmess-%v", config["add"])
+	}
+
+	port, _ := config["port"].(float64)
+	proxy := map[string]any{
+		"name":             name,
+		"type":             "vmess",
+		"server":           config["add"],
+		"port":             int(port),
+		"uuid":             config["id"],
+		"alterId":          int(config["aid"].(float64)),
+		"cipher":           config["scy"],
+		"skip-cert-verify": true,
+	}
+
+	if config["tls"] == "tls" {
+		proxy["tls"] = true
+		if sni, ok := config["sni"].(string); ok && sni != "" {
+			proxy["servername"] = sni
+		}
+	}
+
+	net, _ := config["net"].(string)
+	if net == "ws" {
+		path, _ := config["path"].(string)
+		if path == "" {
+			path = "/"
+		}
+		host, _ := config["host"].(string)
+		if host == "" {
+			host, _ = proxy["server"].(string)
+		}
+		proxy["network"] = "ws"
+		proxy["ws-opts"] = map[string]any{
+			"path":    path,
+			"headers": map[string]string{"Host": host},
+		}
+	} else if net == "grpc" {
+		path, _ := config["path"].(string)
+		proxy["network"] = "grpc"
+		proxy["grpc-opts"] = map[string]any{
+			"grpc-service-name": path,
+		}
+	}
+
+	return proxy
+}
+
+func parseSSURI(uri string) map[string]any {
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return nil
+	}
+
+	name := ""
+	if frag := parsed.Fragment; frag != "" {
+		name, _ = url.QueryUnescape(frag)
+	}
+	if name == "" {
+		name = fmt.Sprintf("ss-%s", parsed.Hostname())
+	}
+
+	method := "none"
+	password := ""
+	if user := parsed.User; user != nil {
+		method = user.Username()
+		password, _ = user.Password()
+	}
+
+	return map[string]any{
+		"name":             name,
+		"type":             "ss",
+		"server":           parsed.Hostname(),
+		"port":             parsed.Port(),
+		"cipher":           method,
+		"password":         password,
+		"skip-cert-verify": true,
+	}
+}
+
+func parseTrojanURI(uri string) map[string]any {
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return nil
+	}
+	params := parsed.Query()
+
+	name := ""
+	if frag := parsed.Fragment; frag != "" {
+		name, _ = url.QueryUnescape(frag)
+	}
+	if name == "" {
+		name = fmt.Sprintf("trojan-%s", parsed.Hostname())
+	}
+
+	proxy := map[string]any{
+		"name":             name,
+		"type":             "trojan",
+		"server":           parsed.Hostname(),
+		"port":             parsed.Port(),
+		"password":         parsed.User.Username(),
+		"skip-cert-verify": true,
+	}
+
+	if sni := params.Get("sni"); sni != "" {
+		proxy["sni"] = sni
+	}
+
+	return proxy
+}
+
+func deduplicateProxyNames(proxies []map[string]any) []map[string]any {
+	seen := make(map[string]int)
+	result := make([]map[string]any, 0, len(proxies))
+
+	for _, proxy := range proxies {
+		name, _ := proxy["name"].(string)
+		if name == "" {
+			continue
+		}
+
+		if count, exists := seen[name]; exists {
+			newName := fmt.Sprintf("%s_%d", name, count+1)
+			for seen[newName] > 0 {
+				count++
+				newName = fmt.Sprintf("%s_%d", name, count+1)
+			}
+			seen[name] = count + 1
+			seen[newName] = 1
+			newProxy := make(map[string]any)
+			for k, v := range proxy {
+				newProxy[k] = v
+			}
+			newProxy["name"] = newName
+			result = append(result, newProxy)
+		} else {
+			seen[name] = 1
+			result = append(result, proxy)
+		}
+	}
+
+	return result
+}
+
+func deduplicateYAMLProxies(proxies *yaml.Node) *yaml.Node {
+	if proxies == nil || proxies.Kind != yaml.SequenceNode {
+		return proxies
+	}
+
+	seen := make(map[string]int)
+	newContent := make([]*yaml.Node, 0, len(proxies.Content))
+
+	for _, proxy := range proxies.Content {
+		if proxy.Kind != yaml.MappingNode {
+			newContent = append(newContent, proxy)
+			continue
+		}
+
+		var name string
+		for i := 0; i+1 < len(proxy.Content); i += 2 {
+			if proxy.Content[i].Value == "name" {
+				name = proxy.Content[i+1].Value
+				break
+			}
+		}
+
+		if name == "" {
+			newContent = append(newContent, proxy)
+			continue
+		}
+
+		if count, exists := seen[name]; exists {
+			newName := fmt.Sprintf("%s_%d", name, count+1)
+			for seen[newName] > 0 {
+				count++
+				newName = fmt.Sprintf("%s_%d", name, count+1)
+			}
+			seen[name] = count + 1
+			seen[newName] = 1
+
+			newProxy := &yaml.Node{Kind: yaml.MappingNode}
+			for i := 0; i+1 < len(proxy.Content); i += 2 {
+				key := &yaml.Node{Kind: yaml.ScalarNode, Value: proxy.Content[i].Value}
+				var value *yaml.Node
+				if proxy.Content[i].Value == "name" {
+					value = &yaml.Node{Kind: yaml.ScalarNode, Value: newName}
+				} else if proxy.Content[i].Value == "skip-cert-verify" {
+					value = &yaml.Node{Kind: yaml.ScalarNode, Value: "true"}
+				} else {
+					value = &yaml.Node{Kind: proxy.Content[i+1].Kind, Value: proxy.Content[i+1].Value, Content: proxy.Content[i+1].Content}
+				}
+				newProxy.Content = append(newProxy.Content, key, value)
+			}
+			newContent = append(newContent, newProxy)
+		} else {
+			seen[name] = 1
+			newProxy := &yaml.Node{Kind: yaml.MappingNode}
+			hasSkip := false
+			for i := 0; i+1 < len(proxy.Content); i += 2 {
+				key := &yaml.Node{Kind: yaml.ScalarNode, Value: proxy.Content[i].Value}
+				var value *yaml.Node
+				if proxy.Content[i].Value == "skip-cert-verify" {
+					value = &yaml.Node{Kind: yaml.ScalarNode, Value: "true"}
+					hasSkip = true
+				} else {
+					value = &yaml.Node{Kind: proxy.Content[i+1].Kind, Value: proxy.Content[i+1].Value, Content: proxy.Content[i+1].Content}
+				}
+				newProxy.Content = append(newProxy.Content, key, value)
+			}
+			if !hasSkip {
+				newProxy.Content = append(newProxy.Content,
+					&yaml.Node{Kind: yaml.ScalarNode, Value: "skip-cert-verify"},
+					&yaml.Node{Kind: yaml.ScalarNode, Value: "true"})
+			}
+			newContent = append(newContent, newProxy)
+		}
+	}
+
+	return &yaml.Node{Kind: yaml.SequenceNode, Content: newContent}
+}
+
+func proxiesToYAML(proxies []map[string]any) *yaml.Node {
+	seq := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, proxy := range proxies {
+		mapping := &yaml.Node{Kind: yaml.MappingNode}
+		keys := []string{"name", "type", "server", "port", "uuid", "password", "cipher", "alterId", "tls", "skip-cert-verify", "servername", "client-fingerprint", "network", "ws-opts", "grpc-opts", "flow", "sni"}
+		for _, key := range keys {
+			if val, ok := proxy[key]; ok {
+				mapping.Content = append(mapping.Content, scalar(key), valueToYAML(val))
+			}
+		}
+		for key, val := range proxy {
+			found := false
+			for _, k := range keys {
+				if k == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				mapping.Content = append(mapping.Content, scalar(key), valueToYAML(val))
+			}
+		}
+		seq.Content = append(seq.Content, mapping)
+	}
+	return seq
+}
+
+func valueToYAML(val any) *yaml.Node {
+	switch v := val.(type) {
+	case string:
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: v}
+	case int:
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", v)}
+	case bool:
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", v)}
+	case map[string]any:
+		mapping := &yaml.Node{Kind: yaml.MappingNode}
+		for key, subVal := range v {
+			mapping.Content = append(mapping.Content, scalar(key), valueToYAML(subVal))
+		}
+		return mapping
+	case map[string]string:
+		mapping := &yaml.Node{Kind: yaml.MappingNode}
+		for key, subVal := range v {
+			mapping.Content = append(mapping.Content, scalar(key), scalar(subVal))
+		}
+		return mapping
+	default:
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", v)}
+	}
 }
 
 func countProviderNodes(data []byte) int {
