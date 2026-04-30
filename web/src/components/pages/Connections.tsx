@@ -1,23 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { List, X, RefreshCw, Search } from 'lucide-react';
-import { Panel } from '../ui';
-import { PageGuide } from '../guide';
-import { useApp } from '../../contexts/AppContext';
+import { CircleX, List, RefreshCw } from 'lucide-react';
+import { Panel, FlowHint } from '../ui';
 import { api } from '../../services/api';
-import { formatBytes, formatSpeed, readError, routeClass, routeLabel } from '../../utils/helpers';
-import type { Connection } from '../../types';
+import { formatBytes, readError, connectionRouteTarget, routeLabel, routeClass, formatDate } from '../../utils/helpers';
+import type { ConnectionsResponse } from '../../types';
 
-export function Connections() {
-  const { setBusy, showToast } = useApp();
-  const [connections, setConnections] = useState<Connection[]>([]);
+export function Connections({ setBusy }: { setBusy: (busy: boolean) => void }) {
+  const [data, setData] = useState<ConnectionsResponse>({ connections: [] });
   const [filter, setFilter] = useState('');
   const [error, setError] = useState('');
 
   const load = async () => {
     setBusy(true);
     try {
-      const data = await api.get<{ connections: Connection[] }>('/api/mihomo/connections');
-      setConnections(data.connections || []);
+      const next = await api<ConnectionsResponse>('/api/mihomo/connections');
+      setData({ ...next, connections: next.connections || [] });
       setError('');
     } catch (err) {
       setError(readError(err));
@@ -28,100 +25,92 @@ export function Connections() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const closeConnection = async (id: string) => {
+    setBusy(true);
     try {
-      await api.delete(`/api/mihomo/connections/${encodeURIComponent(id)}`);
-      setConnections(prev => prev.filter(c => c.id !== id));
-      showToast('success', '连接已关闭');
+      await api(`/api/mihomo/connections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await load();
     } catch (err) {
-      showToast('error', readError(err));
+      setError(readError(err));
+    } finally {
+      setBusy(false);
     }
   };
 
   const closeAll = async () => {
+    setBusy(true);
     try {
-      await api.delete('/api/mihomo/connections');
-      setConnections([]);
-      showToast('success', '所有连接已关闭');
+      await api('/api/mihomo/connections', { method: 'DELETE' });
+      await load();
     } catch (err) {
-      showToast('error', readError(err));
+      setError(readError(err));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const filtered = connections.filter(c => {
-    const query = filter.toLowerCase();
-    return !query ||
-      c.metadata.host?.toLowerCase().includes(query) ||
-      c.metadata.process?.toLowerCase().includes(query) ||
-      c.metadata.sourceIP?.includes(query);
+  const query = filter.trim().toLowerCase();
+  const connections = (data.connections || []).filter((conn) => {
+    const text = [
+      conn.metadata?.host,
+      conn.metadata?.destinationIP,
+      conn.metadata?.destinationPort,
+      conn.metadata?.process,
+      conn.rule,
+      conn.rulePayload,
+      conn.chains?.join(' ')
+    ].join(' ').toLowerCase();
+    return !query || text.includes(query);
   });
-
-  const totalUp = connections.reduce((sum, c) => sum + c.upload, 0);
-  const totalDown = connections.reduce((sum, c) => sum + c.download, 0);
 
   return (
     <div className="stack">
-      <PageGuide page="connections" />
-      
-      <Panel title="连接追踪" icon={<List size={18} />}>
-        <div className="connectionToolbar">
-          <div className="searchBox">
-            <Search size={16} />
-            <input
-              placeholder="搜索主机/进程/IP..."
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-            />
-          </div>
-          <div className="connectionStats">
-            <span>↑ {formatSpeed(totalUp)}</span>
-            <span>↓ {formatSpeed(totalDown)}</span>
-            <span>共 {connections.length} 个连接</span>
-          </div>
+      <FlowHint upstream={{ label: '流量监控 - 实时流量', page: 'traffic' }} downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
+      <Panel title={`连接 (${connections.length}/${data.connections?.length || 0})`} icon={<List size={18} />}>
+        {error && <p className="inlineError">{error}</p>}
+        <div className="toolbar">
+          <input className="searchInput" placeholder="筛选域名、IP、规则、进程" value={filter} onChange={(event) => setFilter(event.target.value)} />
           <button onClick={load}>
             <RefreshCw size={16} />
             刷新
           </button>
           <button className="danger" onClick={closeAll}>
-            <X size={16} />
+            <CircleX size={16} />
             关闭全部
           </button>
         </div>
-
-        {error && <p className="inlineError">{error}</p>}
-
         <div className="connectionList">
-          {filtered.map(conn => (
-            <div key={conn.id} className="connectionCard">
-              <div className="connMeta">
-                <strong>{conn.metadata.host || conn.metadata.destinationIP}</strong>
-                <span>{conn.metadata.process || conn.metadata.network}</span>
+          {connections.map((conn) => (
+            <div className="connectionCard" key={conn.id}>
+              <div>
+                <strong>{conn.metadata?.host || conn.metadata?.destinationIP || 'unknown'}</strong>
+                <span>{conn.metadata?.network || '-'} · {conn.metadata?.type || '-'} · {conn.metadata?.destinationIP || '-'}:{conn.metadata?.destinationPort || '-'}</span>
+                <small>{conn.metadata?.process || 'unknown process'} · {conn.start ? formatDate(conn.start) : '-'}</small>
               </div>
-              <div className="connInfo">
-                <span>{conn.metadata.sourceIP}:{conn.metadata.sourcePort}</span>
-                <span>→ {conn.metadata.destinationPort}</span>
+              <div>
+                <span className={routeClass(conn)}>{routeLabel(connectionRouteTarget(conn))}</span>
+                <small>规则：{conn.rule || '-'} {conn.rulePayload ? `· ${conn.rulePayload}` : ''}</small>
               </div>
-              <div className="connTraffic">
-                <span>↑ {formatBytes(conn.upload)}</span>
-                <span>↓ {formatBytes(conn.download)}</span>
+              <div className="chainList">
+                {(conn.chains || []).map((chain) => (
+                  <span key={chain}>{chain}</span>
+                ))}
+                {(conn.chains || []).length === 0 && <span>-</span>}
               </div>
-              <div className={routeClass(conn)}>
-                {routeLabel(conn.chains?.[0] || conn.rule)}
+              <div className="connectionTraffic">
+                <span>↑ {formatBytes(conn.upload || 0)}</span>
+                <span>↓ {formatBytes(conn.download || 0)}</span>
               </div>
-              <button
-                className="iconBtn"
-                onClick={() => closeConnection(conn.id)}
-                title="关闭连接"
-              >
-                <X size={14} />
+              <button className="iconButton" title="关闭连接" onClick={() => closeConnection(conn.id)}>
+                <CircleX size={16} />
               </button>
             </div>
           ))}
-          {filtered.length === 0 && <p className="empty">暂无连接</p>}
+          {connections.length === 0 && <p className="empty">没有连接</p>}
         </div>
       </Panel>
     </div>

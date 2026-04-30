@@ -1,10 +1,9 @@
+import type { Connection, ProxyNode, Subscription, TunDiagnostics, TunForm, RuntimeConfig } from '../types';
+
 export function readError(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
   if (text.includes('unauthorized') || text.includes('401')) {
     return '未授权：当前 WebUI 不再内置 token 输入框，请关闭 MWM_TOKEN，或通过反向代理注入 Authorization。';
-  }
-  if (text.includes('fetch')) {
-    return '无法连接到管理服务，请确认服务已启动';
   }
   return text;
 }
@@ -19,28 +18,65 @@ export function parseErrorText(text: string): string {
   }
 }
 
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+export function defaultTunForm(): TunForm {
+  return {
+    stack: 'system',
+    device: '',
+    dnsHijack: '0.0.0.0:53',
+    autoRoute: true,
+    autoDetectInterface: true
+  };
 }
 
-export function formatSpeed(bytesPerSecond: number): string {
-  return `${formatBytes(bytesPerSecond)}/s`;
+export function tunFormFromDiagnostics(diagnostics: TunDiagnostics | null, config: RuntimeConfig | null): TunForm {
+  const defaults = defaultTunForm();
+  const dnsHijack = diagnostics?.config?.dnsHijack?.length ? diagnostics.config.dnsHijack.join(', ') : defaults.dnsHijack;
+  return {
+    stack: diagnostics?.config?.stack || config?.tun?.stack || defaults.stack,
+    device: diagnostics?.config?.device || config?.tun?.device || '',
+    dnsHijack,
+    autoRoute: diagnostics?.config?.autoRoute ?? defaults.autoRoute,
+    autoDetectInterface: diagnostics?.config?.autoDetectInterface ?? defaults.autoDetectInterface
+  };
 }
 
-export function formatTimestamp(value: string): string {
-  return new Date(value).toLocaleString();
+export function parseTunDnsHijack(value: string): string[] {
+  const items = value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+  return items.length ? items : ['0.0.0.0:53'];
 }
 
-export function formatExpire(value: number): string {
-  return new Date(value * 1000).toLocaleDateString();
+export function sameTunForm(left: TunForm, right: TunForm): boolean {
+  return left.stack === right.stack
+    && left.device.trim() === right.device.trim()
+    && parseTunDnsHijack(left.dnsHijack).join(',') === parseTunDnsHijack(right.dnsHijack).join(',')
+    && left.autoRoute === right.autoRoute
+    && left.autoDetectInterface === right.autoDetectInterface;
+}
+
+export function readTunReloadError(value: string): string {
+  const text = parseErrorText(value) || value;
+  if (text.includes('/dev/net/tun') || text.includes('no such file or directory')) {
+    return 'TUN 配置已写入，但 mihomo 无法创建 TUN 设备。Docker 部署需要挂载 /dev/net/tun，并添加 NET_ADMIN capability 或 privileged 模式。';
+  }
+  if (text.includes('operation not permitted') || text.includes('permission denied')) {
+    return 'TUN 配置已写入，但 mihomo 权限不足。请检查容器 NET_ADMIN/privileged 或主机运行权限。';
+  }
+  if (text.includes('device or resource busy') || text.includes('device busy')) {
+    return 'TUN 设备已被占用，系统已自动重启 mihomo 服务。';
+  }
+  if (text.includes('address already in use') || text.includes('already exists')) {
+    return 'TUN 接口已存在。请检查是否有其他 TUN 接口冲突，或尝试指定不同的设备名称。';
+  }
+  return text;
+}
+
+export function usagePercent(item: Subscription): number {
+  if (!item.total) return 0;
+  return Math.min(100, Math.round((((item.upload || 0) + (item.download || 0)) / item.total) * 100));
 }
 
 export function lines(value: string): string[] {
-  return value.split('\n').map(item => item.trim()).filter(Boolean);
+  return value.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
 export function validName(value: string): boolean {
@@ -56,13 +92,8 @@ export function validURL(value: string): boolean {
   }
 }
 
-export function usagePercent(used: number, total: number): number {
-  if (!total) return 0;
-  return Math.min(100, Math.round((used / total) * 100));
-}
-
 export function parseConfigRule(rule: string): { type: string; payload: string; target: string } {
-  const parts = rule.split(',').map(item => item.trim()).filter(Boolean);
+  const parts = rule.split(',').map((item) => item.trim()).filter(Boolean);
   const type = parts[0] || '';
   if (type === 'MATCH') {
     return { type, payload: 'all', target: parts[1] || '' };
@@ -91,17 +122,15 @@ export function validRulePayload(type: string, payload: string): boolean {
 }
 
 export function rulePayloadPlaceholder(type: string): string {
-  const map: Record<string, string> = {
-    'DOMAIN-SUFFIX': 'example.com',
-    'DOMAIN': 'www.example.com',
-    'DOMAIN-KEYWORD': 'google',
-    'GEOSITE': 'cn / geolocation-!cn',
-    'GEOIP': 'CN',
-    'IP-CIDR': '192.168.0.0/16',
-    'PROCESS-NAME': 'chrome.exe',
-    'MATCH': 'MATCH 不需要内容，可留空'
-  };
-  return map[type] || '匹配内容';
+  if (type === 'DOMAIN-SUFFIX') return 'example.com';
+  if (type === 'DOMAIN') return 'www.example.com';
+  if (type === 'DOMAIN-KEYWORD') return 'google';
+  if (type === 'GEOSITE') return 'cn / geolocation-!cn';
+  if (type === 'GEOIP') return 'CN';
+  if (type === 'IP-CIDR') return '192.168.0.0/16';
+  if (type === 'PROCESS-NAME') return 'chrome.exe';
+  if (type === 'MATCH') return 'MATCH 不需要内容，可留空';
+  return '匹配内容';
 }
 
 export function describeMode(value: string): string {
@@ -138,15 +167,15 @@ export function describeGroupType(value: string): string {
 export function describeRuleType(value: string): string {
   const map: Record<string, string> = {
     'DOMAIN-SUFFIX': '匹配域名后缀，例如 example.com 会匹配 www.example.com。',
-    'DOMAIN': '精确匹配完整域名，例如 www.example.com。',
+    DOMAIN: '精确匹配完整域名，例如 www.example.com。',
     'DOMAIN-KEYWORD': '域名包含关键词即匹配，例如 google。',
-    'GEOSITE': '使用 mihomo/geosite 内置域名集合，例如 cn。',
+    GEOSITE: '使用 mihomo/geosite 内置域名集合，例如 cn。',
     'IP-CIDR': '匹配 IPv4 网段，例如 192.168.0.0/16。',
     'IP-CIDR6': '匹配 IPv6 网段。',
-    'GEOIP': '按目标 IP 所属国家/地区匹配，例如 CN。',
-    'RULE-SET': '引用规则资源规则集，适合远程或本地规则文件。',
+    GEOIP: '按目标 IP 所属国家/地区匹配，例如 CN。',
+    'RULE-SET': '引用 rule-provider 规则集，适合远程或本地规则文件。',
     'PROCESS-NAME': '按进程名匹配，通常仅在客户端或支持进程识别的平台有效。',
-    'MATCH': '兜底规则，通常放在最后，匹配所有未命中的连接。'
+    MATCH: '兜底规则，通常放在最后，匹配所有未命中的连接。'
   };
   return map[value] || value;
 }
@@ -159,44 +188,70 @@ export function describeTarget(value: string): string {
   return `策略组或节点：${value}。规则命中后会转到这里。`;
 }
 
-export function delayClass(delay: number, alive?: boolean): string {
-  if (alive === false) return 'error';
-  if (delay === Number.MAX_SAFE_INTEGER || delay <= 0) return 'unknown';
-  if (delay <= 200) return 'fast';
-  if (delay <= 500) return 'good';
-  if (delay <= 1000) return 'slow';
-  return 'bad';
+export function describeProviderType(value: string): string {
+  const map: Record<string, string> = {
+    http: '远程规则集，通过 URL 拉取并按 interval 更新。',
+    file: '本地规则集，从 path 指定的文件读取。',
+    inline: '内联规则集，规则直接写在配置中。'
+  };
+  return map[value] || value;
 }
 
-export function formatDelay(delay: number, alive?: boolean): string {
-  if (alive === false) return 'Error';
-  if (delay === Number.MAX_SAFE_INTEGER || delay <= 0) return '- ms';
-  return `${delay} ms`;
+export function describeProviderBehavior(value: string): string {
+  const map: Record<string, string> = {
+    domain: '规则集内容是域名类规则。',
+    ipcidr: '规则集内容是 IP/CIDR 类规则。',
+    classical: '规则集内容是完整 classical 规则语法。'
+  };
+  return map[value] || value;
 }
 
-export function latestDelay(history?: Array<{ delay: number }>): number {
-  if (!history || history.length === 0) return Number.MAX_SAFE_INTEGER;
-  const latest = history[history.length - 1];
-  return latest?.delay > 0 ? latest.delay : Number.MAX_SAFE_INTEGER;
+export function configRuleTarget(rule: string): string {
+  const parts = rule.split(',').map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts[0] === 'MATCH') return parts[1] || '';
+  return parts[2] || '';
 }
 
-export function resolveConcreteNode(proxies: Record<string, { all?: string[]; now?: string }>, startName: string): string {
-  let current = startName;
-  const seen = new Set<string>();
-  for (let i = 0; i < 8; i++) {
-    if (!current || seen.has(current)) break;
-    seen.add(current);
-    const proxy = proxies[current];
-    if (!proxy || !Array.isArray(proxy.all) || !proxy.now) break;
-    current = proxy.now;
+export function formatUsage(item: Subscription): string {
+  const used = (item.upload || 0) + (item.download || 0);
+  if (!item.total) return '无流量信息';
+  return `${formatBytes(used)} / ${formatBytes(item.total)}`;
+}
+
+export function formatRate(value: number): string {
+  return `${formatBytes(value)}/s`;
+}
+
+export function formatBytes(value: number): string {
+  if (!value) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
   }
-  return current || startName || '-';
+  return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
 }
 
-export function connectionRouteTarget(conn: { chains?: string[]; rule?: string }): string {
+export function validDate(value?: string): boolean {
+  if (!value || value.startsWith('0001-')) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+export function formatDate(value: string): string {
+  return new Date(value).toLocaleString();
+}
+
+export function formatExpire(value: number): string {
+  return new Date(value * 1000).toLocaleDateString();
+}
+
+export function connectionRouteTarget(conn: Connection): string {
   const chain = conn.chains || [];
   if (chain.includes('DIRECT')) return 'DIRECT';
-  if (chain.some(item => item === 'REJECT' || item === 'REJECT-DROP')) return 'REJECT';
+  if (chain.some((item) => item === 'REJECT' || item === 'REJECT-DROP')) return 'REJECT';
   return chain[0] || conn.rule || '-';
 }
 
@@ -207,9 +262,52 @@ export function routeLabel(target?: string): string {
   return `代理 ${target}`;
 }
 
-export function routeClass(conn: { chains?: string[]; rule?: string }): string {
+export function routeClass(conn: Connection): string {
   const target = connectionRouteTarget(conn);
   if (target === 'DIRECT') return 'routePill direct';
   if (target === 'REJECT' || target === 'REJECT-DROP') return 'routePill reject';
   return 'routePill proxy';
+}
+
+export function resolveConcreteNode(proxies: Record<string, ProxyNode>, startName: string): string {
+  let current = startName;
+  const seen = new Set<string>();
+  for (let index = 0; index < 8; index += 1) {
+    if (!current || seen.has(current)) break;
+    seen.add(current);
+    const proxy = proxies[current];
+    if (!proxy || !Array.isArray(proxy.all) || !proxy.now) break;
+    current = proxy.now;
+  }
+  return current || startName || '-';
+}
+
+export function latestDelay(node: ProxyNode): number {
+  const history = node.history || [];
+  const latest = history[history.length - 1];
+  if (!latest || latest.delay <= 0) return Number.MAX_SAFE_INTEGER;
+  return latest.delay;
+}
+
+export function formatDelay(node: ProxyNode): string {
+  if (node.alive === false) return 'Error';
+  const delay = latestDelay(node);
+  if (delay === Number.MAX_SAFE_INTEGER) return '- ms';
+  return `${delay} ms`;
+}
+
+export function isDelayTestable(node?: ProxyNode): boolean {
+  if (!node) return false;
+  if (Array.isArray(node.all) && node.all.length > 0) return false;
+  return !['Compatible', 'Selector', 'URLTest', 'Fallback', 'LoadBalance', 'Relay'].includes(node.type || '');
+}
+
+export function delayClass(node: ProxyNode): string {
+  if (node.alive === false) return 'error';
+  const delay = latestDelay(node);
+  if (delay === Number.MAX_SAFE_INTEGER) return 'unknown';
+  if (delay <= 200) return 'fast';
+  if (delay <= 500) return 'good';
+  if (delay <= 1000) return 'slow';
+  return 'bad';
 }

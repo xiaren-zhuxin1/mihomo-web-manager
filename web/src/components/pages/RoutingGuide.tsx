@@ -1,271 +1,103 @@
-import React, { useEffect, useState } from 'react';
-import { Compass, ArrowRight, Check, X, AlertTriangle, HelpCircle, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { BookOpen, Globe2, ListTree, Settings2 } from 'lucide-react';
 import { Panel } from '../ui';
-import { PageGuide } from '../guide';
-import { useApp } from '../../contexts/AppContext';
-import { api } from '../../services/api';
-import { readError } from '../../utils/helpers';
+import { setPageGlobal } from '../ui';
+import type { Page } from '../../types';
 
-type GuideStep = {
-  id: string;
-  title: string;
-  description: string;
-  status: 'pending' | 'checking' | 'success' | 'error' | 'warning';
-  detail?: string;
-  action?: {
-    label: string;
-    handler: () => void;
-  };
-};
-
-export function RoutingGuide() {
-  const { setBusy, showToast, setPage } = useApp();
-  const [steps, setSteps] = useState<GuideStep[]>([
-    {
-      id: 'config',
-      title: '检查配置文件',
-      description: '验证配置文件格式和必要字段',
-      status: 'pending'
-    },
-    {
-      id: 'proxies',
-      title: '检查代理节点',
-      description: '确认至少有一个可用的代理节点',
-      status: 'pending'
-    },
-    {
-      id: 'groups',
-      title: '检查策略组',
-      description: '确认策略组配置正确',
-      status: 'pending'
-    },
-    {
-      id: 'rules',
-      title: '检查规则',
-      description: '确认分流规则已配置',
-      status: 'pending'
-    },
-    {
-      id: 'dns',
-      title: '检查 DNS',
-      description: '确认 DNS 配置正确',
-      status: 'pending'
-    },
-    {
-      id: 'connection',
-      title: '测试连接',
-      description: '测试代理连接是否正常',
-      status: 'pending'
-    }
-  ]);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [error, setError] = useState('');
-
-  const updateStep = (id: string, updates: Partial<GuideStep>) => {
-    setSteps(prev => prev.map(step =>
-      step.id === id ? { ...step, ...updates } : step
-    ));
-  };
-
-  const checkConfig = async () => {
-    updateStep('config', { status: 'checking' });
-    try {
-      const data = await api.get<{ ok: boolean; issues?: Array<{ level: string; message: string }> }>('/api/config/validate');
-      if (data.ok) {
-        updateStep('config', { status: 'success', detail: '配置文件格式正确' });
-        return true;
-      } else {
-        const errors = data.issues?.filter(i => i.level === 'error') || [];
-        if (errors.length > 0) {
-          updateStep('config', {
-            status: 'error',
-            detail: errors.map(e => e.message).join('; ')
-          });
-          return false;
-        }
-        updateStep('config', { status: 'warning', detail: '配置有警告，但不影响使用' });
-        return true;
-      }
-    } catch (err) {
-      updateStep('config', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const checkProxies = async () => {
-    updateStep('proxies', { status: 'checking' });
-    try {
-      const data = await api.get<{ proxies: Record<string, { type: string; alive?: boolean }> }>('/api/mihomo/proxies');
-      const proxies = Object.values(data.proxies || {});
-      const nodeCount = proxies.filter(p => !['Selector', 'URLTest', 'Fallback', 'Direct', 'Reject'].includes(p.type)).length;
-      
-      if (nodeCount > 0) {
-        updateStep('proxies', { status: 'success', detail: `发现 ${nodeCount} 个代理节点` });
-        return true;
-      }
-      updateStep('proxies', { status: 'warning', detail: '未发现代理节点，请检查订阅' });
-      return false;
-    } catch (err) {
-      updateStep('proxies', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const checkGroups = async () => {
-    updateStep('groups', { status: 'checking' });
-    try {
-      const data = await api.get<{ proxies: Record<string, { type: string; all?: string[] }> }>('/api/mihomo/proxies');
-      const groups = Object.values(data.proxies || {}).filter(p =>
-        ['Selector', 'URLTest', 'Fallback', 'LoadBalance'].includes(p.type)
-      );
-      
-      if (groups.length > 0) {
-        updateStep('groups', { status: 'success', detail: `发现 ${groups.length} 个策略组` });
-        return true;
-      }
-      updateStep('groups', { status: 'warning', detail: '未发现策略组' });
-      return false;
-    } catch (err) {
-      updateStep('groups', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const checkRules = async () => {
-    updateStep('rules', { status: 'checking' });
-    try {
-      const data = await api.get<{ rules: unknown[] }>('/api/mihomo/rules');
-      const ruleCount = data.rules?.length || 0;
-      
-      if (ruleCount > 0) {
-        updateStep('rules', { status: 'success', detail: `已加载 ${ruleCount} 条规则` });
-        return true;
-      }
-      updateStep('rules', { status: 'warning', detail: '未加载任何规则' });
-      return false;
-    } catch (err) {
-      updateStep('rules', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const checkDns = async () => {
-    updateStep('dns', { status: 'checking' });
-    try {
-      const data = await api.get<{ dns?: { enable?: boolean; 'enhanced-mode'?: string } }>('/api/mihomo/configs');
-      if (data.dns?.enable) {
-        updateStep('dns', { status: 'success', detail: `DNS 已启用，模式: ${data.dns['enhanced-mode'] || 'normal'}` });
-        return true;
-      }
-      updateStep('dns', { status: 'warning', detail: 'DNS 未启用或未配置' });
-      return false;
-    } catch (err) {
-      updateStep('dns', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const checkConnection = async () => {
-    updateStep('connection', { status: 'checking' });
-    try {
-      const data = await api.get<{ delay: number }>('/api/mihomo/proxies/PROXY/delay?timeout=5000&url=https://www.gstatic.com/generate_204');
-      if (data.delay > 0) {
-        updateStep('connection', { status: 'success', detail: `连接正常，延迟: ${data.delay}ms` });
-        return true;
-      }
-      updateStep('connection', { status: 'error', detail: '代理连接失败' });
-      return false;
-    } catch (err) {
-      updateStep('connection', { status: 'error', detail: readError(err) });
-      return false;
-    }
-  };
-
-  const runAllChecks = async () => {
-    setBusy(true);
-    setError('');
-    
-    const checks = [checkConfig, checkProxies, checkGroups, checkRules, checkDns, checkConnection];
-    
-    for (let i = 0; i < checks.length; i++) {
-      setCurrentStep(i);
-      await checks[i]();
-    }
-    
-    setCurrentStep(-1);
-    setBusy(false);
-  };
-
-  useEffect(() => {
-    runAllChecks();
-  }, []);
-
-  const getStepIcon = (status: GuideStep['status']) => {
-    switch (status) {
-      case 'success': return <Check size={16} className="iconSuccess" />;
-      case 'error': return <X size={16} className="iconError" />;
-      case 'warning': return <AlertTriangle size={16} className="iconWarning" />;
-      case 'checking': return <span className="spinner" />;
-      default: return <HelpCircle size={16} className="iconPending" />;
-    }
-  };
-
-  const successCount = steps.filter(s => s.status === 'success').length;
-  const errorCount = steps.filter(s => s.status === 'error').length;
-  const warningCount = steps.filter(s => s.status === 'warning').length;
-
+export function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
   return (
     <div className="stack">
-      <PageGuide page="guide" />
-      
-      <Panel title="路由诊断向导" icon={<Compass size={18} />}>
-        {error && <p className="inlineError">{error}</p>}
-
-        <div className="guideSummary">
-          <span className="success">{successCount} 通过</span>
-          <span className="warning">{warningCount} 警告</span>
-          <span className="error">{errorCount} 错误</span>
+      <section className="guideHero">
+        <div>
+          <span>新手路线</span>
+          <h2>先理解一条连接怎么被 mihomo 处理</h2>
+          <p>不用先背 YAML。你只要记住：规则决定去哪里，策略组决定怎么选节点，资源负责提供节点或规则集。</p>
         </div>
+        <button className="primary" onClick={() => setPage('maintenance')}>
+          <Settings2 size={16} />
+          打开配置维护
+        </button>
+      </section>
 
-        <div className="guideSteps">
-          {steps.map((step, index) => (
-            <div
-              key={step.id}
-              className={`guideStep ${step.status} ${currentStep === index ? 'active' : ''}`}
-            >
-              <div className="stepHeader">
-                {getStepIcon(step.status)}
-                <strong>{step.title}</strong>
-              </div>
-              <p className="stepDescription">{step.description}</p>
-              {step.detail && (
-                <p className={`stepDetail ${step.status}`}>{step.detail}</p>
-              )}
-              {step.status === 'error' && (
-                <button
-                  className="stepAction"
-                  onClick={() => {
-                    if (step.id === 'proxies' || step.id === 'groups') {
-                      setPage('proxies');
-                    } else if (step.id === 'rules') {
-                      setPage('rules');
-                    } else if (step.id === 'config') {
-                      setPage('maintenance');
-                    }
-                  }}
-                >
-                  前往修复 <ArrowRight size={14} />
-                </button>
-              )}
+      <div className="routeFlow">
+        <div>
+          <strong>1. 连接进来</strong>
+          <span>浏览器、系统或 TUN 把请求交给 mihomo。</span>
+        </div>
+        <div>
+          <strong>2. 从上到下匹配规则</strong>
+          <span>例如 DOMAIN-SUFFIX,google.com,PROXY 命中后就去 PROXY。</span>
+        </div>
+        <div>
+          <strong>3. 进入策略组</strong>
+          <span>PROXY 可以手选节点，也可以引用订阅资源自动拿节点。</span>
+        </div>
+        <div>
+          <strong>4. 最终落到节点</strong>
+          <span>连接真正从某个 Trojan、Vmess、Hysteria 等节点出去。</span>
+        </div>
+      </div>
+
+      <div className="guideGrid">
+        <Panel title="我应该先配什么？" icon={<BookOpen size={18} />}>
+          <div className="guideSteps">
+            <div>
+              <strong>第一步：订阅管理</strong>
+              <p>把订阅接进来，它会生成 proxy-provider。资源是"节点仓库"，不是实际分流规则。</p>
+              <button onClick={() => setPage('subscriptions')}>去订阅管理</button>
             </div>
-          ))}
-        </div>
+            <div>
+              <strong>第二步：策略组</strong>
+              <p>创建或编辑 PROXY / AUTO / AI 这类策略组，把 provider 或固定节点放进去。规则只需要指向策略组。</p>
+              <button onClick={() => setPage('maintenance')}>编辑策略组</button>
+            </div>
+            <div>
+              <strong>第三步：规则</strong>
+              <p>规则的目标写 PROXY、DIRECT、REJECT 或你建的策略组。越具体的规则放越前，MATCH 放最后兜底。</p>
+              <button onClick={() => setPage('maintenance')}>编辑规则</button>
+            </div>
+          </div>
+        </Panel>
 
-        <div className="guideActions">
-          <button className="primary" onClick={runAllChecks}>
-            <RefreshCw size={16} />
-            重新检测
-          </button>
+        <Panel title="常见配置怎么理解？" icon={<ListTree size={18} />}>
+          <div className="conceptList">
+            <div>
+              <strong>proxy-provider</strong>
+              <span>远程订阅或本地节点文件。它只提供节点，不决定流量走向。</span>
+            </div>
+            <div>
+              <strong>proxy-groups</strong>
+              <span>策略组。规则命中后会进入这里，再由手选、测速、fallback 等方式决定具体节点。</span>
+            </div>
+            <div>
+              <strong>rules</strong>
+              <span>分流规则。从上到下匹配，命中第一条就停止。目标通常是策略组。</span>
+            </div>
+            <div>
+              <strong>rule-provider</strong>
+              <span>规则集仓库。配合 RULE-SET 使用，适合大量域名/IP 规则。</span>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="直接照着做的例子" icon={<Globe2 size={18} />}>
+        <div className="recipeGrid">
+          <div>
+            <strong>让 Google 走代理</strong>
+            <code>DOMAIN-SUFFIX,google.com,PROXY</code>
+            <span>目标 PROXY 是策略组，不一定是单个节点。</span>
+          </div>
+          <div>
+            <strong>让国内 IP 直连</strong>
+            <code>GEOIP,CN,DIRECT</code>
+            <span>DIRECT 是内置目标，表示不经过代理。</span>
+          </div>
+          <div>
+            <strong>兜底走代理</strong>
+            <code>MATCH,PROXY</code>
+            <span>放在最后，没命中的连接全部交给 PROXY。</span>
+          </div>
         </div>
       </Panel>
     </div>

@@ -1,38 +1,31 @@
-import React, { ReactNode } from 'react';
+import React from 'react';
 
-type PanelProps = {
-  title?: string;
-  icon?: ReactNode;
-  children: ReactNode;
-  className?: string;
-  onboardingId?: string;
-};
-
-export function Panel({ title, icon, children, className = '', onboardingId }: PanelProps) {
+export function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className={`panel ${className}`} data-onboarding={onboardingId}>
-      {title && (
-        <div className="panelHeader">
-          {icon && <span className="panelIcon">{icon}</span>}
-          <h2>{title}</h2>
-        </div>
-      )}
-      <div className="panelContent">{children}</div>
+    <section className="panel">
+      <div className="panelTitle">
+        {icon}
+        <h2>{title}</h2>
+      </div>
+      {children}
     </section>
   );
 }
 
-type PanelRowProps = {
-  label: string;
-  value?: ReactNode;
-  children?: ReactNode;
-};
-
-export function PanelRow({ label, value, children }: PanelRowProps) {
+export function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="panelRow">
-      <span className="panelLabel">{label}</span>
-      <span className="panelValue">{value || children}</span>
+    <div className="metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+export function SectionNote({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="sectionNote">
+      <strong>{title}</strong>
+      <span>{body}</span>
     </div>
   );
 }

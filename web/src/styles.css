@@ -529,6 +529,7 @@ h1 {
   align-items: center;
   padding: 8px 0;
   flex-wrap: wrap;
+  grid-column: 1 / -1;
 }
 
 .flowLink {

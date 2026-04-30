@@ -31,14 +31,14 @@ if ($versionContent -match 'Version = "v(\d+)\.(\d+)\.(\d+)"') {
 
 $frontendVersionPattern = "const FRONTEND_VERSION = 'v[\d.]+';"
 $frontendVersionReplacement = "const FRONTEND_VERSION = '$newVersion';"
-$mainTsx = Join-Path $WebDir "src\main.tsx"
-$mainContent = Get-Content $mainTsx -Raw -Encoding UTF8
-if ($mainContent -match $frontendVersionPattern) {
-    $mainContent = $mainContent -replace $frontendVersionPattern, $frontendVersionReplacement
-    [System.IO.File]::WriteAllText($mainTsx, $mainContent, [System.Text.Encoding]::UTF8)
-    Write-Host "Version updated in main.tsx" -ForegroundColor Green
+$appTsx = Join-Path $WebDir "src\App.tsx"
+$appContent = Get-Content $appTsx -Raw -Encoding UTF8
+if ($appContent -match $frontendVersionPattern) {
+    $appContent = $appContent -replace $frontendVersionPattern, $frontendVersionReplacement
+    [System.IO.File]::WriteAllText($appTsx, $appContent, [System.Text.Encoding]::UTF8)
+    Write-Host "Version updated in App.tsx" -ForegroundColor Green
 } else {
-    Write-Host "FRONTEND_VERSION not found in main.tsx, skipping" -ForegroundColor Yellow
+    Write-Host "FRONTEND_VERSION not found in App.tsx, skipping" -ForegroundColor Yellow
 }
 
 Write-Host "`n[1/5] Building frontend..." -ForegroundColor Cyan
@@ -78,7 +78,7 @@ Write-Host "Backend build completed" -ForegroundColor Green
 
 Write-Host "`n[4/5] Restarting service..." -ForegroundColor Cyan
 Invoke-SSHCommand -SessionId $session.SessionId -Command "pkill -f mihomo-web-manager 2>/dev/null; sleep 1" | Out-Null
-Invoke-SSHCommand -SessionId $session.SessionId -Command "cd $RemotePath && MIHOMO_CONTROLLER='127.0.0.1:9090' MIHOMO_SECRET='mihomo123' MIHOMO_CONFIG='/home/ai/mihomo/config/config.yaml' WEB_DIR='$RemotePath/web/dist' MWM_LISTEN='0.0.0.0:8081' nohup ./mihomo-web-manager >> app.log 2>&1 &" | Out-Null
+Invoke-SSHCommand -SessionId $session.SessionId -Command "cd $RemotePath && MIHOMO_CONTROLLER='127.0.0.1:9090' MIHOMO_SECRET='mihomo123' MIHOMO_CONFIG='/home/ai/mihomo/config/config.yaml' WEB_DIR='$RemotePath/web/dist' MWM_LISTEN='0.0.0.0:8081' nohup ./mihomo-web-manager >> app.log 2>&1 &" -TimeOut 5 | Out-Null
 Start-Sleep -Seconds 2
 Write-Host "Service restarted" -ForegroundColor Green
 
