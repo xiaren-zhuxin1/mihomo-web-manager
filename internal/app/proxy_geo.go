@@ -84,6 +84,15 @@ func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, err
 		}
 	}
 
+	s.geoMu.Lock()
+	defer s.geoMu.Unlock()
+
+	if cached, ok := s.geoCache.Load(cacheKey); ok {
+		if entry, ok := cached.(*geoCacheEntry); ok && time.Now().Before(entry.expiresAt) {
+			return entry.info, nil
+		}
+	}
+
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", proxyPort)
 
 	proxy, err := url.Parse(proxyURL)

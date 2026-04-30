@@ -523,6 +523,118 @@ h1 {
   width: fit-content;
 }
 
+.flowHint {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+
+.flowLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.flowLink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.flowLink.upstream:hover {
+  border-color: var(--color-info, #3b82f6);
+  color: var(--color-info, #3b82f6);
+}
+
+.flowLink.downstream:hover {
+  border-color: var(--color-success, #22c55e);
+  color: var(--color-success, #22c55e);
+}
+
+.activeGroupGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.activeGroupCard {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.activeGroupCard:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.activeGroupHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.activeGroupBody {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.activeNodeName {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.activeGroupMeta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.statusPill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.statusPill.good {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+
+.statusPill.bad {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.inlineDelay {
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .runtimeGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1274,17 +1386,54 @@ h1 {
   font-size: 11px;
 }
 
-.proxyRegion {
-  min-height: 20px;
+.badge.region {
+  border-color: rgba(59, 130, 246, 0.3);
+  color: var(--accent-primary);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.badge.selectable {
+  border-color: rgba(16, 112, 68, 0.3);
+  color: var(--accent-success);
+  background: var(--accent-success-bg);
+}
+
+.badge.auto {
+  border-color: rgba(146, 64, 14, 0.3);
+  color: var(--accent-warning);
+  background: var(--accent-warning-bg);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nodeCard.clickable {
+  cursor: pointer;
+}
+
+.nodeCard.clickable:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.12);
+}
+
+.nodeCard.clickable:active {
+  transform: scale(0.98);
+}
+
+.currentLabel {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--border-default);
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-success);
   border-radius: var(--radius-sm);
-  padding: 0 6px;
-  color: var(--accent-primary);
-  background: rgba(59, 130, 246, 0.1);
-  font-size: 11px;
-  margin-left: 4px;
+  background: var(--accent-success-bg);
+  color: var(--accent-success);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .delay {

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
@@ -29,7 +29,7 @@ import {
   Zap
 } from 'lucide-react';
 
-const FRONTEND_VERSION = 'v1.0.5';
+const FRONTEND_VERSION = 'v1.0.6';
 import './styles.css';
 
 type Page = 'overview' | 'guide' | 'topology' | 'maintenance' | 'traffic' | 'proxies' | 'connections' | 'logs' | 'subscriptions' | 'providers' | 'rules' | 'config';
@@ -277,6 +277,7 @@ function parseErrorText(text: string) {
 
 function App() {
   const [page, setPage] = useState<Page>('overview');
+  setPageGlobal = setPage;
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -304,7 +305,7 @@ function App() {
     ['topology', ListTree, '路由拓扑', '代理路由'],
     ['rules', Globe2, '规则命中', '代理路由'],
     ['subscriptions', Cable, '订阅管理', '配置维护'],
-    ['providers', ListTree, '节点 Provider', '配置维护'],
+    ['providers', ListTree, '节点资源', '配置维护'],
     ['maintenance', Settings2, '配置维护', '配置维护'],
     ['config', FileCode2, '系统配置', '系统管理']
   ] as const;
@@ -391,7 +392,7 @@ function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
         <div>
           <span>新手路线</span>
           <h2>先理解一条连接怎么被 mihomo 处理</h2>
-          <p>不用先背 YAML。你只要记住：规则决定去哪里，策略组决定怎么选节点，Provider 负责提供节点或规则集。</p>
+          <p>不用先背 YAML。你只要记住：规则决定去哪里，策略组决定怎么选节点，资源负责提供节点或规则集。</p>
         </div>
         <button className="primary" onClick={() => setPage('maintenance')}>
           <Settings2 size={16} />
@@ -410,7 +411,7 @@ function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
         </div>
         <div>
           <strong>3. 进入策略组</strong>
-          <span>PROXY 可以手选节点，也可以引用订阅 Provider 自动拿节点。</span>
+          <span>PROXY 可以手选节点，也可以引用订阅资源自动拿节点。</span>
         </div>
         <div>
           <strong>4. 最终落到节点</strong>
@@ -423,7 +424,7 @@ function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
           <div className="guideSteps">
             <div>
               <strong>第一步：订阅管理</strong>
-              <p>把订阅接进来，它会生成 proxy-provider。Provider 是“节点仓库”，不是实际分流规则。</p>
+              <p>把订阅接进来，它会生成 proxy-provider。资源是“节点仓库”，不是实际分流规则。</p>
               <button onClick={() => setPage('subscriptions')}>去订阅管理</button>
             </div>
             <div>
@@ -484,8 +485,29 @@ function RoutingGuide({ setPage }: { setPage: (page: Page) => void }) {
   );
 }
 
+function FlowHint({ upstream, downstream }: { upstream?: { label: string; page: Page }; downstream?: { label: string; page: Page } }) {
+  return (
+    <div className="flowHint">
+      {upstream && (
+        <button className="flowLink upstream" onClick={() => setPageGlobal(upstream.page)}>
+          <ArrowUp size={14} />
+          上游：{upstream.label}
+        </button>
+      )}
+      {downstream && (
+        <button className="flowLink downstream" onClick={() => setPageGlobal(downstream.page)}>
+          下游：{downstream.label}
+          <ArrowDown size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+let setPageGlobal: (page: Page) => void = () => {};
+
 function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () => void }) {
-  const [currentProxy, setCurrentProxy] = useState<{
+  const [activeGroups, setActiveGroups] = useState<Array<{
     group: string;
     node: string;
     type: string;
@@ -493,33 +515,27 @@ function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () 
     delay: string;
     delayClass: string;
     healthy: string;
-  } | null>(null);
+  }>>([]);
   const [error, setError] = useState('');
 
   const loadCurrentProxy = async () => {
     try {
       const data = await api<{ proxies: Record<string, ProxyNode> }>('/api/mihomo/proxies');
       const groups = Object.values(data.proxies || {}).filter((proxy) => Array.isArray(proxy.all) && proxy.all.length > 0);
-      const group =
-        groups.find((item) => item.name === 'PROXY') ||
-        groups.find((item) => item.name === 'GLOBAL') ||
-        groups.find((item) => ['Selector', 'Compatible'].includes(item.type)) ||
-        groups[0];
-      if (!group) {
-        setCurrentProxy(null);
-        return;
-      }
-      const node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
-      const nodeInfo = data.proxies[node];
-      setCurrentProxy({
-        group: group.name,
-        node,
-        type: nodeInfo?.type || group.type || '-',
-        provider: nodeInfo?.providerName || nodeInfo?.['provider-name'] || '-',
-        delay: nodeInfo ? formatDelay(nodeInfo) : '- ms',
-        delayClass: nodeInfo ? delayClass(nodeInfo) : 'unknown',
-        healthy: nodeInfo?.alive === false ? '异常' : nodeInfo?.alive === true ? '正常' : '未知'
+      const result = groups.map((group) => {
+        const node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
+        const nodeInfo = data.proxies[node];
+        return {
+          group: group.name,
+          node,
+          type: nodeInfo?.type || group.type || '-',
+          provider: nodeInfo?.providerName || nodeInfo?.['provider-name'] || '-',
+          delay: nodeInfo ? formatDelay(nodeInfo) : '- ms',
+          delayClass: nodeInfo ? delayClass(nodeInfo) : 'unknown',
+          healthy: nodeInfo?.alive === false ? '异常' : nodeInfo?.alive === true ? '正常' : '未知'
+        };
       });
+      setActiveGroups(result);
       setError('');
     } catch (err) {
       setError(readError(err));
@@ -528,10 +544,13 @@ function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () 
 
   useEffect(() => {
     loadCurrentProxy();
+    const interval = setInterval(loadCurrentProxy, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="stack">
+      <FlowHint downstream={{ label: '代理策略 - 切换节点', page: 'proxies' }} />
       <div className="grid">
         <Panel title="控制器" icon={<Activity size={18} />}>
           <Metric label="状态" value={health?.ok ? 'Online' : 'Unknown'} />
@@ -546,52 +565,30 @@ function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () 
           <Metric label="令牌保护" value={health?.managerTokenActive ? 'Enabled' : 'Disabled'} />
         </Panel>
       </div>
-      <Panel title="当前节点" icon={<Zap size={18} />}>
+      <Panel title={`策略组当前节点 (${activeGroups.length})`} icon={<Zap size={18} />}>
         {error && <p className="inlineError">{error}</p>}
-        <div className="currentProxyBox">
-          <div>
-            <span>策略组</span>
-            <strong>{currentProxy?.group || '-'}</strong>
-          </div>
-          <div>
-            <span>节点</span>
-            <strong>{currentProxy?.node || '-'}</strong>
-          </div>
-          <div>
-            <span>类型</span>
-            <strong>{currentProxy?.type || '-'}</strong>
-          </div>
-          <div>
-            <span>Provider</span>
-            <strong>{currentProxy?.provider || '-'}</strong>
-          </div>
-          <div>
-            <span>健康</span>
-            <strong>{currentProxy?.healthy || '-'}</strong>
-          </div>
-          <div>
-            <span>延迟</span>
-            <strong className={`delay inlineDelay ${currentProxy?.delayClass || 'unknown'}`}>{currentProxy?.delay || '- ms'}</strong>
-          </div>
-          <button onClick={loadCurrentProxy}>
-            <RefreshCw size={16} />
-            刷新
-          </button>
+        <div className="activeGroupGrid">
+          {activeGroups.map((item) => (
+            <div key={item.group} className="activeGroupCard" onClick={() => setPageGlobal('proxies')}>
+              <div className="activeGroupHead">
+                <strong>{item.group}</strong>
+                <span className={`delay inlineDelay ${item.delayClass}`}>{item.delay}</span>
+              </div>
+              <div className="activeGroupBody">
+                <span className="activeNodeName">{item.node}</span>
+                <span className={`statusPill ${item.healthy === '正常' ? 'good' : item.healthy === '异常' ? 'bad' : ''}`}>{item.healthy}</span>
+              </div>
+              <div className="activeGroupMeta">
+                <span>{item.type}</span>
+                {item.provider !== '-' && <span>{item.provider}</span>}
+              </div>
+            </div>
+          ))}
+          {activeGroups.length === 0 && <p className="empty">暂无策略组</p>}
         </div>
       </Panel>
       <RuntimeControls />
-      <Panel title="控制台分区" icon={<ListTree size={18} />}>
-        <div className="sectionGrid">
-          <SectionNote title="代理" body="策略组、节点选择、运行态切换，参考 MetaCubeXD / Zashboard 的 dashboard 视角。" />
-          <SectionNote title="订阅" body="新增订阅、Manager 接管订阅、配置残留诊断，参考 Clash Verge 的 profile 管理视角。" />
-          <SectionNote title="Providers / 规则" body="展示 mihomo 当前实际加载的 proxy-provider 与 rule-provider。" />
-          <SectionNote title="配置 / 服务" body="服务器本机配置文件、备份、reload、Docker 或 systemd 生命周期控制。" />
-        </div>
-        <button className="primary" onClick={onRefresh}>
-          <RefreshCw size={16} />
-          刷新状态
-        </button>
-      </Panel>
+      <FlowHint upstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} downstream={{ label: '流量监控 - 查看实时流量', page: 'traffic' }} />
     </div>
   );
 }
@@ -903,8 +900,8 @@ function Topology({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const rejectRuleCount = rules.filter((rule) => ['REJECT', 'REJECT-DROP'].includes(rule.proxy)).length;
 
   return (
-    <div className="stack">
-      {error && <p className="inlineError">{error}</p>}
+      <div className="stack">
+        {error && <p className="inlineError">{error}</p>}
       <div className="grid">
         <Panel title="关系总览" icon={<ListTree size={18} />}>
           <Metric label="策略组" value={String(groups.length)} />
@@ -1120,7 +1117,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
     setBusy(true);
     try {
       await api(`/api/config/rule-providers/${encodeURIComponent(providerDraft.name)}`, { method: 'PUT', body: JSON.stringify(providerDraft) });
-      setMessage(`规则组 Provider 已保存：${providerDraft.name}`);
+      setMessage(`规则资源已保存：${providerDraft.name}`);
       await load();
     } catch (err) {
       setError(readError(err));
@@ -1134,7 +1131,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
     setBusy(true);
     try {
       await api(`/api/config/rule-providers/${encodeURIComponent(name)}`, { method: 'DELETE' });
-      setMessage(`规则组 Provider 已删除：${name}`);
+      setMessage(`规则资源已删除：${name}`);
       await load();
     } catch (err) {
       setError(readError(err));
@@ -1170,6 +1167,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="stack">
+      <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
       {message && <p className="message">{message}</p>}
       {error && <p className="inlineError">{error}</p>}
       <div className="grid">
@@ -1205,7 +1203,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
       )}
       <div className="maintainGrid">
         <Panel title={`策略组维护 (${model.proxyGroups.length})`} icon={<Zap size={18} />}>
-          <div className="formTip">策略组名称建议只使用字母、数字、中文、空格、下划线、中横线。节点和 Provider 尽量点选，不需要手写 YAML 数组。</div>
+          <div className="formTip">策略组名称建议只使用字母、数字、中文、空格、下划线、中横线。节点和资源尽量点选，不需要手写 YAML 数组。</div>
           <div className="maintainForm">
             <input className={groupDraft.name && !groupNameValid ? 'invalidInput' : ''} placeholder="策略组名称，例如 PROXY / AI / 香港节点" value={groupDraft.name} onChange={(event) => setGroupDraft({ ...groupDraft, name: event.target.value })} />
             {groupDraft.name && !groupNameValid && <div className="fieldError">名称不能包含逗号、冒号、方括号等 YAML 特殊字符。</div>}
@@ -1223,7 +1221,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
             />
             <ChipEditor
               label="引用 proxy-provider"
-              tip="这里选择订阅 Provider，mihomo 会把 provider 内节点加入该策略组。"
+              tip="这里选择订阅资源，mihomo 会把资源内节点加入该策略组。"
               values={groupDraft.use || []}
               options={proxyProviders}
               placeholder="选择 proxy-provider"
@@ -1308,9 +1306,9 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
         <Panel title={`规则组 Provider (${model.ruleProviders.length})`} icon={<ListTree size={18} />}>
           <div className="formTip">http 类型必须填写 URL，file 类型必须填写 path。interval 只填秒数，例如 86400。</div>
           <div className="maintainForm">
-            <input className={providerDraft.name && !providerNameValid ? 'invalidInput' : ''} placeholder="Provider 名称，例如 private-direct" value={providerDraft.name} onChange={(event) => setProviderDraft({ ...providerDraft, name: event.target.value })} />
+            <input className={providerDraft.name && !providerNameValid ? 'invalidInput' : ''} placeholder="资源名称，例如 private-direct" value={providerDraft.name} onChange={(event) => setProviderDraft({ ...providerDraft, name: event.target.value })} />
             {providerDraft.name && !providerNameValid && <div className="fieldError">名称不能包含逗号、冒号、方括号等 YAML 特殊字符。</div>}
-            {providerNames.length > 0 && <div className="relationHint">规则里用 `RULE-SET,名称,策略组` 引用这些 Provider。</div>}
+            {providerNames.length > 0 && <div className="relationHint">规则里用 `RULE-SET,名称,策略组` 引用这些资源。</div>}
             <div className="formGrid2">
               <select title={describeProviderType(providerDraft.type)} value={providerDraft.type} onChange={(event) => setProviderDraft({ ...providerDraft, type: event.target.value })}>
                 {['http', 'file', 'inline'].map((item) => <option key={item} title={describeProviderType(item)}>{item}</option>)}
@@ -1328,7 +1326,7 @@ function Maintenance({ setBusy }: { setBusy: (busy: boolean) => void }) {
             {!intervalValid && <div className="fieldError">interval 只能填写秒数。</div>}
             <button className="primary" onClick={saveRuleProvider} disabled={!providerDraft.name.trim() || !providerNameValid || !providerUrlValid || !providerPathValid || !intervalValid}>
               <Save size={16} />
-              保存 Provider
+              保存资源
             </button>
           </div>
           <div className="maintainList">
@@ -1470,6 +1468,7 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   const group = groups.find((item) => item.name === selectedGroup);
   const selectableGroup = group ? ['Selector', 'Compatible'].includes(group.type) : false;
+  const autoGroup = group ? ['URLTest', 'Fallback', 'LoadBalance'].includes(group.type) : false;
   const nodes = useMemo(() => {
     const query = filter.trim().toLowerCase();
     const list = (group?.all || [])
@@ -1559,19 +1558,30 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="split">
+      <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '规则命中 - 分流规则', page: 'rules' }} />
       <Panel title={`策略组 (${groups.length})`} icon={<Zap size={18} />}>
         <div className="list">
-          {groups.map((item) => (
-            <button key={item.name} className={item.name === selectedGroup ? 'row active' : 'row'} onClick={() => setSelectedGroup(item.name)}>
-              <span>{item.name}</span>
-              <small>{item.now || item.type}</small>
-            </button>
-          ))}
+          {groups.map((item) => {
+            const isSelectable = ['Selector', 'Compatible'].includes(item.type);
+            const isAuto = ['URLTest', 'Fallback', 'LoadBalance'].includes(item.type);
+            return (
+              <button key={item.name} className={item.name === selectedGroup ? 'row active' : 'row'} onClick={() => setSelectedGroup(item.name)}>
+                <span>{item.name}</span>
+                <div className="rowMeta">
+                  {isSelectable && <span className="badge selectable">手动</span>}
+                  {isAuto && <span className="badge auto">自动</span>}
+                  <small>{item.now || item.type}</small>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </Panel>
       <Panel title={group ? `${group.name} · ${group.type} · ${group.all?.length || 0} 节点` : '节点'} icon={<Activity size={18} />}>
         {error && <p className="inlineError">{error}</p>}
-        {group && !selectableGroup && <p className="inlineHint">当前策略组类型为 {group.type}，通常由内核自动选择，不支持手动选用节点。</p>}
+        {group && selectableGroup && <p className="inlineHint">点击节点卡片即可选用。当前策略组支持手动选择节点。</p>}
+        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核会根据策略自动切换节点。你仍可手动选用节点覆盖自动选择。</p>}
+        {group && !selectableGroup && !autoGroup && <p className="inlineHint">当前策略组类型为 {group.type}，不支持手动选用节点。</p>}
         <div className="toolbar">
           <input className="searchInput" placeholder="筛选节点或类型" value={filter} onChange={(event) => setFilter(event.target.value)} />
           <button className={sort === 'delay' ? 'activeMode' : ''} onClick={() => setSort('delay')}>延迟</button>
@@ -1585,46 +1595,48 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
           </button>
         </div>
         <div className="nodeCardGrid">
-          {nodes.map((node) => (
-            <div key={node.name} className={group?.now === node.name ? 'nodeCard selected' : 'nodeCard'}>
-              <button className="nodeMain" onClick={() => selectableGroup && selectProxy(node.name)} disabled={!selectableGroup}>
-                <span>{node.name}</span>
-                {group?.now === node.name && <Check size={16} />}
-              </button>
-              <div className="badgeRow">
-                <span className="badge">{node.type || 'Unknown'}</span>
-                {node.udp && <span className="badge">UDP</span>}
-                {node.providerName && <span className="badge">{node.providerName}</span>}
-                {(geoCache[node.name]?.country || geoCache[node.name]?.city) && (
-                  <span className="badge region">{geoCache[node.name]?.country || ''}{geoCache[node.name]?.city ? ` ${geoCache[node.name]?.city}` : ''}</span>
-                )}
-                <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
+          {nodes.map((node) => {
+            const isSelected = group?.now === node.name;
+            const canSelect = selectableGroup || autoGroup;
+            return (
+              <div
+                key={node.name}
+                className={`${isSelected ? 'nodeCard selected' : 'nodeCard'} ${canSelect ? 'clickable' : ''}`}
+                onClick={() => canSelect && selectProxy(node.name)}
+                style={{ cursor: canSelect ? 'pointer' : 'default' }}
+              >
+                <div className="nodeMain">
+                  <span>{node.name}</span>
+                  {isSelected && <Check size={16} />}
+                </div>
+                <div className="badgeRow">
+                  <span className="badge">{node.type || 'Unknown'}</span>
+                  {node.udp && <span className="badge">UDP</span>}
+                  {node.providerName && <span className="badge">{node.providerName}</span>}
+                  {(geoCache[node.name]?.country || geoCache[node.name]?.city) && (
+                    <span className="badge region">{geoCache[node.name]?.country || ''}{geoCache[node.name]?.city ? ` ${geoCache[node.name]?.city}` : ''}</span>
+                  )}
+                  <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
+                </div>
+                <div className="nodeActions">
+                  {canSelect && !isSelected && (
+                    <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
+                      选用
+                    </button>
+                  )}
+                  {isSelected && <span className="currentLabel">当前节点</span>}
+                  <button
+                    className="testButton"
+                    onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
+                    disabled={!isDelayTestable(node)}
+                  >
+                    <Gauge size={15} />
+                    测速
+                  </button>
+                </div>
               </div>
-              <div className="nodeActions">
-                <button
-                  className="selectButton"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    selectProxy(node.name);
-                  }}
-                  disabled={!selectableGroup || group?.now === node.name}
-                >
-                  {group?.now === node.name ? '当前' : '选用'}
-                </button>
-                <button
-                  className="testButton"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    testProxy(node.name);
-                  }}
-                  disabled={!isDelayTestable(node)}
-                >
-                  <Gauge size={15} />
-                  测速
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Panel>
     </div>
@@ -1650,21 +1662,38 @@ function Traffic({ setBusy }: { setBusy: (busy: boolean) => void }) {
     let closed = false;
     loadConnections();
     const timer = window.setInterval(loadConnections, 3000);
-    const stream = new EventSource('/api/mihomo/traffic');
-    stream.onmessage = (event) => {
+    let stream: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connectStream = () => {
       if (closed) return;
-      try {
-        const data = JSON.parse(event.data) as { up?: number; down?: number };
-        setPoints((current) => [...current.slice(-59), { time: new Date().toLocaleTimeString(), up: data.up || 0, down: data.down || 0 }]);
-      } catch {
-        // Ignore malformed stream chunks from upstream.
-      }
+      stream = new EventSource('/api/mihomo/traffic');
+      stream.onmessage = (event) => {
+        if (closed) return;
+        try {
+          const data = JSON.parse(event.data) as { up?: number; down?: number };
+          setPoints((current) => [...current.slice(-59), { time: new Date().toLocaleTimeString(), up: data.up || 0, down: data.down || 0 }]);
+          setError('');
+        } catch {
+          // Ignore malformed stream chunks from upstream.
+        }
+      };
+      stream.onerror = () => {
+        if (closed) return;
+        stream?.close();
+        stream = null;
+        setError('实时流量连接断开，3秒后自动重连...');
+        reconnectTimer = setTimeout(connectStream, 3000);
+      };
     };
-    stream.onerror = () => setError('实时流量连接断开，正在等待浏览器自动重连。');
+
+    connectStream();
+
     return () => {
       closed = true;
       window.clearInterval(timer);
-      stream.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stream?.close();
     };
   }, []);
 
@@ -1673,6 +1702,7 @@ function Traffic({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="stack">
+      <FlowHint upstream={{ label: '总览 - 运行状态', page: 'overview' }} downstream={{ label: '连接追踪 - 查看连接详情', page: 'connections' }} />
       {error && <p className="inlineError">{error}</p>}
       <div className="grid">
         <Panel title="实时速度" icon={<Activity size={18} />}>
@@ -1769,7 +1799,9 @@ function Connections({ setBusy }: { setBusy: (busy: boolean) => void }) {
   });
 
   return (
-    <Panel title={`连接 (${connections.length}/${data.connections?.length || 0})`} icon={<List size={18} />}>
+    <div className="stack">
+      <FlowHint upstream={{ label: '流量监控 - 实时流量', page: 'traffic' }} downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
+      <Panel title={`连接 (${connections.length}/${data.connections?.length || 0})`} icon={<List size={18} />}>
       {error && <p className="inlineError">{error}</p>}
       <div className="toolbar">
         <input className="searchInput" placeholder="筛选域名、IP、规则、进程" value={filter} onChange={(event) => setFilter(event.target.value)} />
@@ -1812,6 +1844,7 @@ function Connections({ setBusy }: { setBusy: (busy: boolean) => void }) {
         {connections.length === 0 && <p className="empty">没有连接</p>}
       </div>
     </Panel>
+    </div>
   );
 }
 
@@ -1849,7 +1882,9 @@ function Logs() {
   }, [level]);
 
   return (
-    <Panel title="实时日志" icon={<Terminal size={18} />}>
+    <div className="stack">
+      <FlowHint upstream={{ label: '流量监控 - 实时流量', page: 'traffic' }} downstream={{ label: '连接追踪 - 连接详情', page: 'connections' }} />
+      <Panel title="实时日志" icon={<Terminal size={18} />}>
       {error && <p className="inlineError">{error}</p>}
       <div className="toolbar">
         {['debug', 'info', 'warning', 'error'].map((item) => (
@@ -1870,6 +1905,7 @@ function Logs() {
         {logs.length === 0 && <p className="empty">{connected ? '日志流已连接，等待新日志' : '正在连接日志流'}</p>}
       </div>
     </Panel>
+    </div>
   );
 }
 
@@ -1961,6 +1997,7 @@ function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="stack">
+      <FlowHint downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
       {message && <p className="message">{message}</p>}
       {error && <p className="inlineError">{error}</p>}
       <Panel title="新增订阅" icon={<Plus size={18} />}>
@@ -1978,7 +2015,7 @@ function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void }) {
         <Panel title="Manager 接管订阅" icon={<Cable size={18} />}>
           <SubscriptionGrid items={managed} empty="还没有由 Manager 接管的订阅" onUpdate={updateSubscription} onSave={saveSubscription} onDelete={deleteSubscription} />
         </Panel>
-        <Panel title="配置引用 Provider" icon={<ListTree size={18} />}>
+        <Panel title="配置引用资源" icon={<ListTree size={18} />}>
           <SubscriptionGrid items={configProviders} empty="配置里没有额外 proxy-provider" onUpdate={updateSubscription} onSave={saveSubscription} onDelete={deleteSubscription} />
         </Panel>
       </div>
@@ -2262,7 +2299,8 @@ function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="split">
-      <Panel title={`Proxy Providers (${providers.length})`} icon={<ListTree size={18} />}>
+      <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
+      <Panel title={`节点资源 (${providers.length})`} icon={<ListTree size={18} />}>
         {error && <p className="inlineError">{error}</p>}
         <div className="toolbar">
           <button onClick={load}>
@@ -2276,7 +2314,7 @@ function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
         </div>
         <ProviderCards items={providers} selected={selectedProvider} onSelect={setSelectedProvider} onUpdate={updateProvider} onHealthCheck={healthCheckProvider} />
       </Panel>
-      <Panel title={provider ? `${provider.name} · ${nodes.length}/${provider.proxies?.length || 0} 节点` : 'Provider 节点'} icon={<Activity size={18} />}>
+      <Panel title={provider ? `${provider.name} · ${nodes.length}/${provider.proxies?.length || 0} 节点` : '资源节点'} icon={<Activity size={18} />}>
         {provider ? (
           <>
             <div className="providerSummary">
@@ -2285,12 +2323,12 @@ function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
               <Metric label="更新时间" value={validDate(provider.updatedAt) ? formatDate(provider.updatedAt!) : '未更新'} />
             </div>
             <div className="toolbar">
-              <input className="searchInput" placeholder="筛选节点、类型、Provider" value={filter} onChange={(event) => setFilter(event.target.value)} />
+              <input className="searchInput" placeholder="筛选节点、类型、资源" value={filter} onChange={(event) => setFilter(event.target.value)} />
               <button className={sort === 'delay' ? 'activeMode' : ''} onClick={() => setSort('delay')}>延迟</button>
               <button className={sort === 'name' ? 'activeMode' : ''} onClick={() => setSort('name')}>名称</button>
               <button onClick={() => healthCheckProvider(provider.name)}>
                 <Gauge size={16} />
-                Provider 测速
+                资源测速
               </button>
             </div>
             <div className="providerNodeGrid">
@@ -2376,7 +2414,8 @@ function Rules({ setBusy }: { setBusy: (busy: boolean) => void }) {
 
   return (
     <div className="stack">
-      <Panel title={`Rule Providers (${providers.length})`} icon={<Globe2 size={18} />}>
+      <FlowHint upstream={{ label: '代理策略 - 分流目标', page: 'proxies' }} downstream={{ label: '连接追踪 - 连接详情', page: 'connections' }} />
+      <Panel title={`规则资源 (${providers.length})`} icon={<Globe2 size={18} />}>
         {error && <p className="inlineError">{error}</p>}
         <div className="table">
           {providers.map((item) => (
@@ -2461,7 +2500,7 @@ function ProviderCards({
             <button className="iconButton" title="更新 provider" onClick={() => onUpdate(item.name)} disabled={item.vehicleType === 'Compatible'}>
               <RefreshCw size={16} />
             </button>
-            <button className="iconButton" title="Provider 测速" onClick={() => onHealthCheck(item.name)}>
+            <button className="iconButton" title="资源测速" onClick={() => onHealthCheck(item.name)}>
               <Gauge size={16} />
             </button>
           </div>
@@ -2568,6 +2607,7 @@ function ConfigEditor({ setBusy, health }: { setBusy: (busy: boolean) => void; h
 
   return (
     <div className="split configSplit">
+      <FlowHint upstream={{ label: '配置维护 - 结构化编辑', page: 'maintenance' }} downstream={{ label: '总览 - 运行状态', page: 'overview' }} />
       <Panel title="配置编辑" icon={<FileCode2 size={18} />}>
         <div className="formTip">优先使用“维护”页的结构化表单。这里是高级 YAML 文本编辑入口，仅用于批量调整或排查问题；保存前会自动备份。</div>
         <div className="toolbar">

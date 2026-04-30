@@ -24,6 +24,7 @@ type geoCacheEntry struct {
 type Server struct {
 	cfg      Config
 	geoCache sync.Map
+	geoMu    sync.Mutex
 }
 
 func NewServer(cfg Config) *Server {
