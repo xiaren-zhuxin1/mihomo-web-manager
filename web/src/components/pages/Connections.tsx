@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { CircleX, List, RefreshCw } from 'lucide-react';
-import { Panel, FlowHint } from '../ui';
+import { CircleX, List, RefreshCw, Gauge } from 'lucide-react';
+import { Panel, Metric, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { formatBytes, readError, connectionRouteTarget, routeLabel, routeClass, formatDate } from '../../utils/helpers';
 import type { ConnectionsResponse } from '../../types';
@@ -70,15 +70,26 @@ export function Connections({ setBusy }: { setBusy: (busy: boolean) => void }) {
   return (
     <div className="stack">
       <FlowHint upstream={{ label: '流量监控 - 实时流量', page: 'traffic' }} downstream={{ label: '代理策略 - 节点选择', page: 'proxies' }} />
-      <Panel title={`连接 (${connections.length}/${data.connections?.length || 0})`} icon={<List size={18} />}>
-        {error && <p className="inlineError">{error}</p>}
-        <div className="toolbar">
-          <input className="searchInput" placeholder="筛选域名、IP、规则、进程" value={filter} onChange={(event) => setFilter(event.target.value)} />
+      <div className="grid">
+        <Panel title="累计统计" icon={<Gauge size={18} />}>
+          <Metric label="上传总量" value={formatBytes(data.uploadTotal || 0)} />
+          <Metric label="下载总量" value={formatBytes(data.downloadTotal || 0)} />
+          <Metric label="内存占用" value={formatBytes(data.memory || 0)} />
+        </Panel>
+        <Panel title="活跃连接" icon={<List size={18} />}>
+          <Metric label="当前连接数" value={String(data.connections?.length || 0)} />
+          <Metric label="筛选结果" value={String(connections.length)} />
           <button onClick={load}>
             <RefreshCw size={16} />
             刷新
           </button>
-          <button className="danger" onClick={closeAll}>
+        </Panel>
+      </div>
+      <Panel title={`连接列表 (${connections.length})`} icon={<List size={18} />}>
+        {error && <p className="inlineError">{error}</p>}
+        <div className="toolbar">
+          <input className="searchInput" placeholder="筛选域名、IP、规则、进程" value={filter} onChange={(event) => setFilter(event.target.value)} />
+          <button className="danger" onClick={closeAll} disabled={connections.length === 0}>
             <CircleX size={16} />
             关闭全部
           </button>
@@ -110,7 +121,7 @@ export function Connections({ setBusy }: { setBusy: (busy: boolean) => void }) {
               </button>
             </div>
           ))}
-          {connections.length === 0 && <p className="empty">没有连接</p>}
+          {connections.length === 0 && <p className="empty">当前无活跃连接 · 累计上传 {formatBytes(data.uploadTotal || 0)} · 累计下载 {formatBytes(data.downloadTotal || 0)}</p>}
         </div>
       </Panel>
     </div>

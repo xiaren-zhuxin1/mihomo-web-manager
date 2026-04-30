@@ -76,6 +76,68 @@ func (s *Server) getMihomoProxyPort() (int, error) {
 	return 7890, nil
 }
 
+type mihomoProxiesResponse struct {
+	Proxies map[string]mihomoProxyEntry `json:"proxies"`
+}
+
+type mihomoProxyEntry struct {
+	Name string   `json:"name"`
+	Type string   `json:"type"`
+	Now  string   `json:"now"`
+	All  []string `json:"all"`
+}
+
+func (s *Server) findGroupContainingProxy(proxyName string) (groupName string, currentNow string, err error) {
+	status, body, err := s.forwardMihomo("GET", "/proxies", nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to list proxies: %w", err)
+	}
+	if status != 200 {
+		return "", "", fmt.Errorf("list proxies returned status %d", status)
+	}
+
+	var resp mihomoProxiesResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return "", "", fmt.Errorf("failed to parse proxies: %w", err)
+	}
+
+	priorityTypes := map[string]int{"Selector": 0, "Compatible": 1, "URLTest": 2, "Fallback": 3, "LoadBalance": 4}
+	bestGroup := ""
+	bestPriority := 999
+	bestNow := ""
+
+	for name, entry := range resp.Proxies {
+		if len(entry.All) == 0 {
+			continue
+		}
+		found := false
+		for _, member := range entry.All {
+			if member == proxyName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		p, ok := priorityTypes[entry.Type]
+		if !ok {
+			p = 99
+		}
+		if p < bestPriority {
+			bestPriority = p
+			bestGroup = name
+			bestNow = entry.Now
+		}
+	}
+
+	if bestGroup == "" {
+		return "", "", fmt.Errorf("no selectable group contains proxy %q", proxyName)
+	}
+
+	return bestGroup, bestNow, nil
+}
+
 func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, error) {
 	cacheKey := proxyName
 	if cached, ok := s.geoCache.Load(cacheKey); ok {
@@ -93,8 +155,24 @@ func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, err
 		}
 	}
 
-	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", proxyPort)
+	groupName, originalNow, err := s.findGroupContainingProxy(proxyName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find group for proxy: %w", err)
+	}
 
+	if err := s.switchProxy(groupName, proxyName); err != nil {
+		return nil, fmt.Errorf("failed to switch proxy in group %q: %w", groupName, err)
+	}
+
+	defer func() {
+		if originalNow != "" {
+			s.switchProxy(groupName, originalNow)
+		}
+	}()
+
+	time.Sleep(150 * time.Millisecond)
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", proxyPort)
 	proxy, err := url.Parse(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse proxy URL: %w", err)
@@ -102,10 +180,8 @@ func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, err
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxy),
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: false,
-			},
+			Proxy:           http.ProxyURL(proxy),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 		},
 		Timeout: 15 * time.Second,
 	}
@@ -114,29 +190,11 @@ func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	req.Header.Set("User-Agent", "curl/7.68.0")
-
-	originalNow, err := s.getCurrentProxy("Proxy")
-	if err != nil {
-		originalNow = ""
-	}
-
-	if err := s.switchProxy("Proxy", proxyName); err != nil {
-		return nil, fmt.Errorf("failed to switch proxy: %w", err)
-	}
-
-	defer func() {
-		if originalNow != "" {
-			s.switchProxy("Proxy", originalNow)
-		}
-	}()
-
-	time.Sleep(100 * time.Millisecond)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, fmt.Errorf("failed to send request via proxy: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -177,12 +235,12 @@ func (s *Server) getCurrentProxy(groupName string) (string, error) {
 
 func (s *Server) switchProxy(groupName, proxyName string) error {
 	body := fmt.Sprintf(`{"name":"%s"}`, proxyName)
-	status, _, err := s.forwardMihomo("PUT", "/proxies/"+url.PathEscape(groupName), strings.NewReader(body))
+	status, respBody, err := s.forwardMihomo("PUT", "/proxies/"+url.PathEscape(groupName), strings.NewReader(body))
 	if err != nil {
 		return err
 	}
 	if status != 204 && status != 200 {
-		return fmt.Errorf("status %d", status)
+		return fmt.Errorf("status %d, body: %s", status, respBody[:min(len(respBody), 200)])
 	}
 	return nil
 }

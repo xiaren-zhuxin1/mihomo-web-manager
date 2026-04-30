@@ -52,8 +52,8 @@ delete_*.py
 run_tests.bat
 run_*.py
 deploy.config.md
-deploy.ps1
-deploy.sh
+/deploy.ps1
+/deploy.sh
 core_remote.py
 web_console_*.py
 web/test-results/

@@ -135,6 +135,7 @@ export type ConnectionsResponse = {
   connections: Connection[];
   uploadTotal?: number;
   downloadTotal?: number;
+  memory?: number;
 };
 
 export type TrafficPoint = {
