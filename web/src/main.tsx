@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity,
@@ -28,12 +28,16 @@ import {
   Trash2,
   Zap
 } from 'lucide-react';
+
+const FRONTEND_VERSION = 'v1.0.5';
 import './styles.css';
 
 type Page = 'overview' | 'guide' | 'topology' | 'maintenance' | 'traffic' | 'proxies' | 'connections' | 'logs' | 'subscriptions' | 'providers' | 'rules' | 'config';
 
 type Health = {
   ok: boolean;
+  version?: string;
+  buildDate?: string;
   mihomoController: string;
   mihomoConfigPath: string;
   managerTokenActive: boolean;
@@ -338,9 +342,14 @@ function App() {
             <h1>{activeTitle}</h1>
             <p>{health ? `${health.mihomoController} · ${health.mihomoConfigPath}` : '正在连接管理服务'}</p>
           </div>
-          <button className="iconButton" title="刷新状态" onClick={refreshHealth}>
-            <RefreshCw size={16} />
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span className="versionBadge" title={`前端: ${FRONTEND_VERSION} | 后端: ${health?.version || '-'}`}>
+              前端: {FRONTEND_VERSION} | 后端: {health?.version || '-'}
+            </span>
+            <button className="iconButton" title="刷新状态" onClick={refreshHealth}>
+              <RefreshCw size={16} />
+            </button>
+          </div>
         </header>
 
         {(health?.managerTokenActive || error) && (
@@ -1418,6 +1427,7 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'delay'>('delay');
   const [error, setError] = useState('');
+  const [geoCache, setGeoCache] = useState<Record<string, { country: string; city: string; region: string }>>({});
 
   const load = async () => {
     setBusy(true);
@@ -1439,6 +1449,25 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     load();
   }, []);
 
+  const loadGeoForNode = async (proxyName: string) => {
+    if (geoCache[proxyName]) return;
+    try {
+      const geoData = await api<{ country?: string; city?: string; region?: string }>(
+        `/api/proxy/${encodeURIComponent(proxyName)}/geo`
+      );
+      setGeoCache((current) => ({
+        ...current,
+        [proxyName]: {
+          country: geoData.country || '',
+          city: geoData.city || '',
+          region: geoData.region || ''
+        }
+      }));
+    } catch {
+      // 地区获取失败不影响主流程
+    }
+  };
+
   const group = groups.find((item) => item.name === selectedGroup);
   const selectableGroup = group ? ['Selector', 'Compatible'].includes(group.type) : false;
   const nodes = useMemo(() => {
@@ -1451,6 +1480,12 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       return latestDelay(a) - latestDelay(b);
     });
   }, [filter, group, proxyMap, sort]);
+
+  useEffect(() => {
+    if (!group || !nodes.length) return;
+    const nodesToLoad = nodes.filter(n => !geoCache[n.name] && isDelayTestable(n));
+    nodesToLoad.slice(0, 5).forEach(n => loadGeoForNode(n.name));
+  }, [selectedGroup, nodes]);
 
   const selectProxy = async (proxyName: string) => {
     if (!group) return;
@@ -1560,6 +1595,9 @@ function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                 <span className="badge">{node.type || 'Unknown'}</span>
                 {node.udp && <span className="badge">UDP</span>}
                 {node.providerName && <span className="badge">{node.providerName}</span>}
+                {(geoCache[node.name]?.country || geoCache[node.name]?.city) && (
+                  <span className="badge region">{geoCache[node.name]?.country || ''}{geoCache[node.name]?.city ? ` ${geoCache[node.name]?.city}` : ''}</span>
+                )}
                 <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
               </div>
               <div className="nodeActions">

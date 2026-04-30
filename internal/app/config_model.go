@@ -1,14 +1,18 @@
 package app
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -48,17 +52,31 @@ type tunConfig struct {
 	AutoDetectInterface *bool    `json:"autoDetectInterface,omitempty"`
 }
 
+type tunBlocker struct {
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	FixCommand  string `json:"fixCommand,omitempty"`
+	FixUrl      string `json:"fixUrl,omitempty"`
+}
+
 type tunDiagnostics struct {
-	Config             tunConfig `json:"config"`
-	Runtime            tunConfig `json:"runtime"`
-	RuntimeAvailable   bool      `json:"runtimeAvailable"`
-	ServiceMode        string    `json:"serviceMode"`
-	HostTunExists      bool      `json:"hostTunExists"`
-	DockerDeviceMapped bool      `json:"dockerDeviceMapped"`
-	DockerNetAdmin     bool      `json:"dockerNetAdmin"`
-	DockerPrivileged   bool      `json:"dockerPrivileged"`
-	Ready              bool      `json:"ready"`
-	Notes              []string  `json:"notes"`
+	Config             tunConfig    `json:"config"`
+	Runtime            tunConfig    `json:"runtime"`
+	RuntimeAvailable   bool         `json:"runtimeAvailable"`
+	ServiceMode        string       `json:"serviceMode"`
+	HostTunExists      bool         `json:"hostTunExists"`
+	DockerDeviceMapped bool         `json:"dockerDeviceMapped"`
+	DockerNetAdmin     bool         `json:"dockerNetAdmin"`
+	DockerPrivileged   bool         `json:"dockerPrivileged"`
+	Ready              bool         `json:"ready"`
+	Notes              []string     `json:"notes"`
+	Blockers           []tunBlocker `json:"blockers"`
+	Suggestions        []string     `json:"suggestions"`
+	CanAutoFix         bool         `json:"canAutoFix"`
+	LastError          string       `json:"lastError,omitempty"`
+	MihomoLogSnippet   string       `json:"mihomoLogSnippet,omitempty"`
 }
 
 var configNamePattern = regexp.MustCompile(`^[\p{L}\p{N} _.\-()!@]+$`)
@@ -99,12 +117,122 @@ func (s *Server) handleTunDiagnostics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, diagnostics)
 }
 
+func (s *Server) handleTunPreCheck(w http.ResponseWriter, r *http.Request) {
+	diagnostics, err := s.buildTunDiagnostics()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	criticalBlockers := []tunBlocker{}
+	for _, b := range diagnostics.Blockers {
+		if b.Severity == "error" {
+			criticalBlockers = append(criticalBlockers, b)
+		}
+	}
+
+	environmentReady := false
+	if s.cfg.ServiceMode == "docker" {
+		environmentReady = diagnostics.HostTunExists && (diagnostics.DockerPrivileged || (diagnostics.DockerDeviceMapped && diagnostics.DockerNetAdmin))
+	} else {
+		environmentReady = diagnostics.HostTunExists
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"canEnable":        len(criticalBlockers) == 0,
+		"blockers":         criticalBlockers,
+		"suggestions":      diagnostics.Suggestions,
+		"environmentReady": environmentReady,
+		"diagnostics":      diagnostics,
+	})
+}
+
+func (s *Server) handleTunAutoFix(w http.ResponseWriter, r *http.Request) {
+	diagnostics, err := s.buildTunDiagnostics()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var fixes []string
+	var errors []string
+	var fixActions []map[string]string
+
+	for _, blocker := range diagnostics.Blockers {
+		switch blocker.Code {
+		case "TUN_RUNTIME_INACTIVE":
+			var restartErr error
+			if s.cfg.ServiceMode == "docker" {
+				_, restartErr = runDocker("restart", s.cfg.ContainerName)
+			} else {
+				_, restartErr = runSystemctl("restart", "mihomo")
+			}
+			if restartErr == nil {
+				fixes = append(fixes, "已重启 "+s.cfg.ServiceMode+" 服务")
+				fixActions = append(fixActions, map[string]string{
+					"action":  "restart",
+					"success": "true",
+				})
+				time.Sleep(2 * time.Second)
+			} else {
+				errors = append(errors, "重启服务失败: "+restartErr.Error())
+				fixActions = append(fixActions, map[string]string{
+					"action":  "restart",
+					"success": "false",
+					"error":   restartErr.Error(),
+				})
+			}
+		default:
+			fixActions = append(fixActions, map[string]string{
+				"action":  "manual",
+				"code":    blocker.Code,
+				"message": "此问题需要手动处理",
+			})
+		}
+	}
+
+	newDiagnostics, _ := s.buildTunDiagnostics()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"fixes":        fixes,
+		"errors":       errors,
+		"fixActions":   fixActions,
+		"diagnostics":  newDiagnostics,
+	})
+}
+
 func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 	var payload tunConfig
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+
+	if payload.Enable {
+		diagnostics, diagErr := s.buildTunDiagnostics()
+		if diagErr != nil {
+			writeError(w, http.StatusInternalServerError, "无法检查 TUN 环境: "+diagErr.Error())
+			return
+		}
+
+		criticalBlockers := []tunBlocker{}
+		for _, b := range diagnostics.Blockers {
+			if b.Severity == "error" {
+				criticalBlockers = append(criticalBlockers, b)
+			}
+		}
+
+		if len(criticalBlockers) > 0 {
+			writeJSON(w, http.StatusPreconditionFailed, map[string]any{
+				"error":       "TUN 环境不满足要求，无法启用",
+				"blockers":    criticalBlockers,
+				"diagnostics": diagnostics,
+				"manualFix":   "请根据下方提示手动修复环境问题后重试",
+			})
+			return
+		}
+	}
+
 	root, err := s.readConfigYAML()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -115,21 +243,8 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	status, body, reloadErr := s.reloadMihomo()
 
-	var restartErr error
-	if reloadErr != nil && strings.Contains(body, "device or resource busy") {
-		if s.cfg.ServiceMode == "docker" {
-			_, restartErr = runDocker("restart", s.cfg.ContainerName)
-		} else {
-			_, restartErr = runSystemctl("restart", "mihomo")
-		}
-		if restartErr == nil {
-			reloadErr = nil
-			status = 200
-			body = ""
-		}
-	}
+	status, body, reloadErr := s.reloadMihomoWithRetry(2, 2*time.Second, true)
 
 	diagnostics, diagErr := s.buildTunDiagnostics()
 	if diagErr != nil {
@@ -138,20 +253,23 @@ func (s *Server) handlePatchTunConfig(w http.ResponseWriter, r *http.Request) {
 			"reloadStatus":    status,
 			"reloadBody":      body,
 			"reloadError":     errorString(reloadErr),
-			"restartError":    errorString(restartErr),
 			"diagnostics":     nil,
 			"diagnosticError": diagErr.Error(),
 		})
 		return
 	}
 	if reloadErr != nil || status >= 300 {
+		diagnostics.LastError = body
+		if logSnippet, err := s.getMihomoLogSnippet(30); err == nil && logSnippet != "" {
+			diagnostics.MihomoLogSnippet = logSnippet
+		}
 		writeJSON(w, http.StatusAccepted, map[string]any{
 			"saved":        true,
 			"reloadStatus": status,
 			"reloadBody":   body,
 			"reloadError":  errorString(reloadErr),
-			"restartError": errorString(restartErr),
 			"diagnostics":  diagnostics,
+			"help":         "请检查 mihomo 日志以获取详细错误信息",
 		})
 		return
 	}
@@ -786,18 +904,45 @@ func (s *Server) buildTunDiagnostics() (tunDiagnostics, error) {
 		Config:      readTunConfig(mappingValue(root, "tun")),
 		ServiceMode: s.cfg.ServiceMode,
 		Notes:       []string{},
+		Blockers:    []tunBlocker{},
+		Suggestions: []string{},
 	}
+
 	if _, err := os.Stat("/dev/net/tun"); err == nil {
 		diagnostics.HostTunExists = true
-	} else if !os.IsNotExist(err) {
+	} else if os.IsNotExist(err) {
+		diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+			Code:        "TUN_DEVICE_MISSING",
+			Severity:    "error",
+			Title:       "/dev/net/tun 设备不存在",
+			Description: "主机缺少 TUN 设备节点，无法创建 TUN 接口。这通常是因为 tun 内核模块未加载。",
+			FixCommand:  "sudo modprobe tun && sudo mkdir -p /dev/net && sudo mknod /dev/net/tun c 10 200 && sudo chmod 666 /dev/net/tun",
+			FixUrl:      "https://github.com/xiaren-zhuxin1/mihomo-webui/blob/main/docs/TUN.md#设备不存在",
+		})
+	} else {
 		diagnostics.Notes = append(diagnostics.Notes, "host /dev/net/tun check failed: "+err.Error())
+		diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+			Code:        "TUN_DEVICE_CHECK_FAILED",
+			Severity:    "error",
+			Title:       "无法检查 /dev/net/tun",
+			Description: "检查 TUN 设备时发生错误: " + err.Error(),
+		})
 	}
-	if runtimeConfig, err := s.readRuntimeTunConfig(); err == nil {
+
+	if runtimeConfig, err := s.readRuntimeTunConfigWithRetry(3); err == nil {
 		diagnostics.Runtime = runtimeConfig
 		diagnostics.RuntimeAvailable = true
 	} else {
 		diagnostics.Notes = append(diagnostics.Notes, "runtime config read failed: "+err.Error())
+		diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+			Code:        "RUNTIME_CONFIG_UNAVAILABLE",
+			Severity:    "warning",
+			Title:       "无法读取 mihomo 运行时配置",
+			Description: "mihomo API 不可用或返回错误，请确认 mihomo 服务正在运行。错误: " + err.Error(),
+			FixCommand:  func() string { if s.cfg.ServiceMode == "docker" { return "docker logs " + s.cfg.ContainerName } else { return "sudo journalctl -u mihomo -n 50" } }(),
+		})
 	}
+
 	environmentReady := false
 	if s.cfg.ServiceMode == "docker" {
 		mapped, netAdmin, privileged, err := inspectDockerTun(s.cfg.ContainerName)
@@ -806,27 +951,67 @@ func (s *Server) buildTunDiagnostics() (tunDiagnostics, error) {
 		diagnostics.DockerPrivileged = privileged
 		if err != nil {
 			diagnostics.Notes = append(diagnostics.Notes, "docker inspect failed: "+err.Error())
+			diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+				Code:        "DOCKER_INSPECT_FAILED",
+				Severity:    "error",
+				Title:       "无法检查容器配置",
+				Description: "Docker inspect 命令执行失败: " + err.Error(),
+			})
 		}
-		if !diagnostics.DockerDeviceMapped && !diagnostics.DockerPrivileged {
-			diagnostics.Notes = append(diagnostics.Notes, "Docker container needs /dev/net/tun mapped into the container.")
+		if !mapped && !privileged {
+			diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+				Code:        "DOCKER_DEVICE_NOT_MAPPED",
+				Severity:    "error",
+				Title:       "容器未映射 /dev/net/tun",
+				Description: "Docker 容器需要映射主机的 TUN 设备才能创建虚拟网络接口。",
+				FixCommand:  "docker run --device /dev/net/tun ...",
+				FixUrl:      "https://github.com/xiaren-zhuxin1/mihomo-webui/blob/main/docs/TUN.md#docker-设备映射",
+			})
 		}
-		if !diagnostics.DockerNetAdmin && !diagnostics.DockerPrivileged {
-			diagnostics.Notes = append(diagnostics.Notes, "Docker container needs NET_ADMIN capability or privileged mode.")
+		if !netAdmin && !privileged {
+			diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+				Code:        "DOCKER_NET_ADMIN_MISSING",
+				Severity:    "error",
+				Title:       "容器缺少 NET_ADMIN 权限",
+				Description: "Docker 容器需要 NET_ADMIN capability 来创建和管理网络接口。",
+				FixCommand:  "docker run --cap-add NET_ADMIN ...",
+				FixUrl:      "https://github.com/xiaren-zhuxin1/mihomo-webui/blob/main/docs/TUN.md#docker-权限配置",
+			})
 		}
 		environmentReady = diagnostics.HostTunExists && (diagnostics.DockerPrivileged || (diagnostics.DockerDeviceMapped && diagnostics.DockerNetAdmin))
+		diagnostics.CanAutoFix = environmentReady
 	} else {
 		if !diagnostics.HostTunExists {
 			diagnostics.Notes = append(diagnostics.Notes, "Host is missing /dev/net/tun.")
 		}
 		environmentReady = diagnostics.HostTunExists
+		diagnostics.CanAutoFix = diagnostics.HostTunExists
 	}
+
 	if !diagnostics.Config.Enable {
-		diagnostics.Notes = append(diagnostics.Notes, "TUN is disabled in config.yaml.")
+		diagnostics.Suggestions = append(diagnostics.Suggestions, "配置文件中 TUN 未启用，点击开关即可启用")
 	}
+
 	if diagnostics.Config.Enable && diagnostics.RuntimeAvailable && !diagnostics.Runtime.Enable {
-		diagnostics.Notes = append(diagnostics.Notes, "TUN is enabled in config.yaml but not active in mihomo runtime.")
+		diagnostics.Blockers = append(diagnostics.Blockers, tunBlocker{
+			Code:        "TUN_RUNTIME_INACTIVE",
+			Severity:    "warning",
+			Title:       "TUN 配置已启用但运行时未激活",
+			Description: "配置文件中 TUN 已启用，但 mihomo 运行时未激活 TUN。可能是启动失败或配置冲突。",
+			FixUrl:      "https://github.com/xiaren-zhuxin1/mihomo-webui/blob/main/docs/TUN.md#运行时未激活",
+		})
+		if logSnippet, err := s.getMihomoLogSnippet(30); err == nil && logSnippet != "" {
+			diagnostics.MihomoLogSnippet = logSnippet
+		}
 	}
-	diagnostics.Ready = environmentReady && diagnostics.Config.Enable && diagnostics.RuntimeAvailable && diagnostics.Runtime.Enable
+
+	criticalBlockers := 0
+	for _, b := range diagnostics.Blockers {
+		if b.Severity == "error" {
+			criticalBlockers++
+		}
+	}
+	diagnostics.Ready = criticalBlockers == 0 && diagnostics.Config.Enable && diagnostics.RuntimeAvailable && diagnostics.Runtime.Enable
 	return diagnostics, nil
 }
 
@@ -859,6 +1044,98 @@ func (s *Server) readRuntimeTunConfig() (tunConfig, error) {
 		AutoRoute:           &payload.Tun.AutoRoute,
 		AutoDetectInterface: &payload.Tun.AutoDetectInterface,
 	}, nil
+}
+
+func (s *Server) readRuntimeTunConfigWithRetry(maxRetries int) (tunConfig, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		config, err := s.readRuntimeTunConfig()
+		if err == nil {
+			return config, nil
+		}
+		lastErr = err
+		if i < maxRetries-1 {
+			time.Sleep(time.Duration(i+1) * time.Second)
+		}
+	}
+	return tunConfig{}, lastErr
+}
+
+func (s *Server) getMihomoLogSnippet(lines int) (string, error) {
+	if s.cfg.ServiceMode == "docker" {
+		out, err := runDocker("logs", "--tail", fmt.Sprintf("%d", lines), s.cfg.ContainerName)
+		if err != nil {
+			return "", err
+		}
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "journalctl", "-u", "mihomo", "-n", fmt.Sprintf("%d", lines), "--no-pager")
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return output.String(), nil
+}
+
+func (s *Server) waitForMihomoReady(timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+			status, _, _ := s.forwardMihomo("GET", "/configs", nil)
+			if status >= 200 && status < 300 {
+				return true
+			}
+		}
+	}
+}
+
+func (s *Server) reloadMihomoWithRetry(maxRetries int, retryDelay time.Duration, fallbackRestart bool) (int, string, error) {
+	var lastErr error
+	var lastStatus int
+	var lastBody string
+
+	for i := 0; i <= maxRetries; i++ {
+		status, body, err := s.reloadMihomo()
+		lastStatus = status
+		lastBody = body
+		lastErr = err
+
+		if err == nil && status < 300 {
+			return status, body, nil
+		}
+
+		if strings.Contains(body, "device or resource busy") || strings.Contains(body, "address already in use") {
+			if fallbackRestart {
+				var restartErr error
+				if s.cfg.ServiceMode == "docker" {
+					_, restartErr = runDocker("restart", s.cfg.ContainerName)
+				} else {
+					_, restartErr = runSystemctl("restart", "mihomo")
+				}
+				if restartErr == nil {
+					time.Sleep(2 * time.Second)
+					if s.waitForMihomoReady(10 * time.Second) {
+						return 200, "restarted successfully", nil
+					}
+				}
+			}
+		}
+
+		if i < maxRetries {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	return lastStatus, lastBody, lastErr
 }
 
 func readTunConfig(node *yaml.Node) tunConfig {

@@ -12,11 +12,18 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
+type geoCacheEntry struct {
+	info      *GeoInfo
+	expiresAt time.Time
+}
+
 type Server struct {
-	cfg Config
+	cfg      Config
+	geoCache sync.Map
 }
 
 func NewServer(cfg Config) *Server {
@@ -32,6 +39,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/config/model", s.auth(s.handleConfigModel))
 	mux.HandleFunc("GET /api/config/validate", s.auth(s.handleValidateConfigModel))
 	mux.HandleFunc("GET /api/config/tun", s.auth(s.handleTunDiagnostics))
+	mux.HandleFunc("GET /api/config/tun/precheck", s.auth(s.handleTunPreCheck))
+	mux.HandleFunc("POST /api/config/tun/autofix", s.auth(s.handleTunAutoFix))
 	mux.HandleFunc("PATCH /api/config/tun", s.auth(s.handlePatchTunConfig))
 	mux.HandleFunc("PUT /api/config/proxy-groups/{name}", s.auth(s.handleUpsertProxyGroup))
 	mux.HandleFunc("POST /api/config/proxy-groups/{name}/move", s.auth(s.handleMoveProxyGroup))
@@ -53,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.auth(s.handleDeleteSubscription))
 	mux.HandleFunc("GET /api/service/status", s.auth(s.handleServiceStatus))
 	mux.HandleFunc("POST /api/service/{action}", s.auth(s.handleServiceAction))
+	mux.HandleFunc("GET /api/proxy/{name}/geo", s.auth(s.handleProxyGeo))
 	mux.HandleFunc("/api/mihomo/", s.auth(s.handleMihomoProxy))
 
 	fileServer := http.FileServer(http.Dir(s.cfg.WebDir))
@@ -86,6 +96,8 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":                 true,
+		"version":            Version,
+		"buildDate":          BuildDate,
 		"mihomoController":   s.cfg.MihomoController,
 		"mihomoConfigPath":   s.cfg.MihomoConfigPath,
 		"managerTokenActive": s.cfg.ManagerToken != "",
@@ -277,7 +289,11 @@ func (s *Server) handleMihomoProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) forwardMihomo(method string, path string, body io.Reader) (int, string, error) {
-	url := strings.TrimRight(s.cfg.MihomoController, "/") + path
+	controllerURL := s.cfg.MihomoController
+	if !strings.HasPrefix(controllerURL, "http://") && !strings.HasPrefix(controllerURL, "https://") {
+		controllerURL = "http://" + controllerURL
+	}
+	url := strings.TrimRight(controllerURL, "/") + path
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return 0, "", err
