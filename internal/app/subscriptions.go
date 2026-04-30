@@ -215,6 +215,15 @@ func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadGateway, body)
 			return
 		}
+		configItems, _ = s.mergeConfigProviders([]Subscription{})
+		for _, item := range configItems {
+			if item.ProviderName == provider {
+				item.LastStatus = "updated"
+				item.UpdatedAt = time.Now()
+				writeJSON(w, http.StatusOK, item)
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"updated": true, "providerName": provider})
 		return
 	}
@@ -386,18 +395,28 @@ func (s *Server) mergeConfigProviders(items []Subscription) ([]Subscription, err
 }
 
 func (s *Server) providerNodeCount(item Subscription) int {
-	if item.Type != "file" || item.Path == "" {
-		return item.NodeCount
+	if item.Type == "file" && item.Path != "" {
+		path := item.Path
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(filepath.Dir(s.cfg.MihomoConfigPath), path)
+		}
+		data, err := os.ReadFile(filepath.Clean(path))
+		if err == nil {
+			return countProviderNodes(data)
+		}
 	}
-	path := item.Path
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(filepath.Dir(s.cfg.MihomoConfigPath), path)
+	if item.ProviderName != "" {
+		status, body, err := s.forwardMihomo("GET", "/providers/proxies/"+url.PathEscape(item.ProviderName), nil)
+		if err == nil && status == 200 {
+			var result struct {
+				Proxies []any `json:"proxies"`
+			}
+			if json.Unmarshal([]byte(body), &result) == nil {
+				return len(result.Proxies)
+			}
+		}
 	}
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		return item.NodeCount
-	}
-	return countProviderNodes(data)
+	return item.NodeCount
 }
 
 func (s *Server) providerPathExists(item Subscription) bool {

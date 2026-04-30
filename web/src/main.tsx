@@ -1,35 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import {
-  Activity,
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  BookOpen,
-  Cable,
-  Check,
-  CircleX,
-  DatabaseBackup,
-  FileCode2,
-  Gauge,
-  Globe2,
-  List,
-  ListTree,
-  Play,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  Save,
-  Server,
-  Settings2,
-  Shield,
-  Square,
-  Terminal,
-  Trash2,
-  Zap
-} from 'lucide-react';
+import App from './App';
 import './styles.css';
 
+<<<<<<< HEAD
 type Page = 'overview' | 'guide' | 'topology' | 'maintenance' | 'traffic' | 'proxies' | 'connections' | 'logs' | 'subscriptions' | 'providers' | 'rules' | 'config';
 
 type Health = {
