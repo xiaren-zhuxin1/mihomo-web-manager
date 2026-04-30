@@ -74,7 +74,7 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
           {activeGroups.map((item) => (
             <div key={item.group} className="activeGroupCard" onClick={() => setPageGlobal('proxies')}>
               <div className="activeGroupHead">
-                <strong>{item.group}</strong>
+                <span className="activeGroupName">{item.group}</span>
                 <span className={`delay inlineDelay ${item.delayClass}`}>{item.delay}</span>
               </div>
               <div className="activeGroupBody">

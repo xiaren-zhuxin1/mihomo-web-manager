@@ -80,6 +80,11 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
         method: 'PUT',
         body: JSON.stringify({ name: proxyName })
       });
+      setGroups((current) =>
+        current.map((g) =>
+          g.name === group.name ? { ...g, now: proxyName } : g
+        )
+      );
       await load();
     } catch (err) {
       setError(readError(err));
