@@ -584,6 +584,18 @@ h1 {
   box-shadow: 0 2px 12px rgba(31, 111, 235, 0.12);
 }
 
+.activeGroupCard.selected {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+  border-left: 4px solid var(--accent-primary);
+  padding-left: 10px;
+}
+
+.activeGroupCard.selected .activeGroupName {
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
 .activeGroupHead {
   display: flex;
   justify-content: space-between;

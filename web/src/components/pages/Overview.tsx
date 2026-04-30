@@ -9,6 +9,8 @@ import {
 } from '../../utils/helpers';
 import type { Health, ProxyNode, RuntimeConfig, MihomoVersion, TunDiagnostics, TunForm } from '../../types';
 
+const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
+
 export function Overview({ health, onRefresh }: { health: Health | null; onRefresh: () => void }) {
   const [activeGroups, setActiveGroups] = useState<Array<{
     group: string;
@@ -19,6 +21,7 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
     delayClass: string;
     healthy: string;
   }>>([]);
+  const [selectedGroup, setSelectedGroup] = useState(() => localStorage.getItem(PROXY_GROUP_KEY) || '');
   const [error, setError] = useState('');
 
   const loadCurrentProxy = async () => {
@@ -51,6 +54,12 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
     return () => clearInterval(interval);
   }, []);
 
+  const handleGroupClick = (groupName: string) => {
+    localStorage.setItem(PROXY_GROUP_KEY, groupName);
+    setSelectedGroup(groupName);
+    setPageGlobal('proxies');
+  };
+
   return (
     <div className="stack">
       <FlowHint downstream={{ label: '代理策略 - 切换节点', page: 'proxies' }} />
@@ -72,7 +81,11 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
         {error && <p className="inlineError">{error}</p>}
         <div className="activeGroupGrid">
           {activeGroups.map((item) => (
-            <div key={item.group} className="activeGroupCard" onClick={() => setPageGlobal('proxies')}>
+            <div
+              key={item.group}
+              className={`activeGroupCard${item.group === selectedGroup ? ' selected' : ''}`}
+              onClick={() => handleGroupClick(item.group)}
+            >
               <div className="activeGroupHead">
                 <span className="activeGroupName">{item.group}</span>
                 <span className={`delay inlineDelay ${item.delayClass}`}>{item.delay}</span>
