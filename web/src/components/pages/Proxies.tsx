@@ -49,7 +49,6 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
         }
       }));
     } catch {
-      // 地区获取失败不影响主流程
     }
   };
 
@@ -92,7 +91,7 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const testProxy = async (proxyName: string) => {
     const node = proxyMap[proxyName];
     if (!isDelayTestable(node)) {
-      setError(`${proxyName} 是 ${node?.type || 'Unknown'} 类型，不能直接测速。请选择具体出站节点，或对策略组执行全组测速。`);
+      setError(`${proxyName} 是 ${node?.type || 'Unknown'} 类型，不能直接测速。请选择具体出出站节点，或对策略组执行全组测速。`);
       return;
     }
     setBusy(true);
@@ -153,11 +152,13 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
             const isAuto = ['URLTest', 'Fallback', 'LoadBalance'].includes(item.type);
             return (
               <button key={item.name} className={item.name === selectedGroup ? 'row active' : 'row'} onClick={() => setSelectedGroup(item.name)}>
-                <span>{item.name}</span>
-                <div className="rowMeta">
+                <div className="groupName">
+                  <span className="groupNameText">{item.name}</span>
                   {isSelectable && <span className="badge selectable">手动</span>}
                   {isAuto && <span className="badge auto">自动</span>}
-                  <small>{item.now || item.type}</small>
+                </div>
+                <div className="groupNow">
+                  {item.now && <span className="nowNode">{item.now}</span>}
                 </div>
               </button>
             );
@@ -188,13 +189,13 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
             return (
               <div
                 key={node.name}
-                className={`${isSelected ? 'nodeCard selected' : 'nodeCard'} ${canSelect ? 'clickable' : ''}`}
+                className={`nodeCard${isSelected ? ' selected' : ''}${canSelect ? ' clickable' : ''}`}
                 onClick={() => canSelect && selectProxy(node.name)}
                 style={{ cursor: canSelect ? 'pointer' : 'default' }}
               >
                 <div className="nodeMain">
                   <span>{node.name}</span>
-                  {isSelected && <Check size={16} />}
+                  {isSelected && <Check size={16} className="selectedCheck" />}
                 </div>
                 <div className="badgeRow">
                   <span className="badge">{node.type || 'Unknown'}</span>
