@@ -11,13 +11,16 @@ mihomo-manager
 check_*.py
 deploy_*.py
 restart_*.py
+restart2.py
 test_*.py
 verify_*.py
 fix_*.py
 debug_*.py
 add_*.py
+create_*.py
 get_*.py
 set_*.py
+setup_*.py
 list_*.py
 switch_*.py
 copy_*.py
@@ -31,6 +34,7 @@ restore_*.py
 save_*.py
 start_*.py
 summary_*.py
+summary.py
 update_*.py
 use_*.py
 verbose_*.py
@@ -42,6 +46,7 @@ final_*.py
 find_*.py
 delete_*.py
 run_tests.bat
+run_*.py
 deploy.config.md
 deploy.ps1
 deploy.sh
