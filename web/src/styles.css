@@ -1314,6 +1314,12 @@ h1 {
 .row.active {
   border-color: var(--accent-primary);
   background: var(--bg-active);
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 9px;
+}
+
+.row.active .groupNameText {
+  color: var(--accent-primary);
 }
 
 .groupName {
