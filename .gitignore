@@ -7,6 +7,10 @@ web/tsconfig.tsbuildinfo
 *.log
 *.exe
 mihomo-manager
+mihomo-manager-linux
+ssh_exec.py
+deploy_*.py
+fix_perm.py
 
 check_*.py
 deploy_*.py
