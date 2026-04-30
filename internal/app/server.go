@@ -27,6 +27,10 @@ type Server struct {
 	geoMu    sync.Mutex
 }
 
+var mihomoHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
 func NewServer(cfg Config) *Server {
 	return &Server{cfg: cfg}
 }
@@ -303,7 +307,7 @@ func (s *Server) forwardMihomo(method string, path string, body io.Reader) (int,
 	if s.cfg.MihomoSecret != "" {
 		req.Header.Set("Authorization", "Bearer "+s.cfg.MihomoSecret)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := mihomoHTTPClient.Do(req)
 	if err != nil {
 		return 0, "", err
 	}
@@ -338,7 +342,8 @@ func (s *Server) streamMihomoSSE(w http.ResponseWriter, r *http.Request, path st
 	if s.cfg.MihomoSecret != "" {
 		req.Header.Set("Authorization", "Bearer "+s.cfg.MihomoSecret)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	streamClient := &http.Client{Timeout: 0}
+	resp, err := streamClient.Do(req)
 	if err != nil {
 		writeSSE(w, "error", err.Error())
 		if flusher != nil {
@@ -407,9 +412,16 @@ func errorString(err error) string {
 
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

@@ -102,8 +102,10 @@ func (s *Server) getProxyGeoInfo(proxyName string, proxyPort int) (*GeoInfo, err
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxy),
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			Proxy: http.ProxyURL(proxy),
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false,
+			},
 		},
 		Timeout: 15 * time.Second,
 	}

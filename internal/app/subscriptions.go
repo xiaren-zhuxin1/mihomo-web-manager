@@ -288,7 +288,8 @@ func (s *Server) refreshSubscription(item Subscription) (Subscription, error) {
 		return item, err
 	}
 	req.Header.Set("User-Agent", "Clash Verge/2.0 MihomoWebManager/0.1")
-	resp, err := http.DefaultClient.Do(req)
+	subClient := &http.Client{Timeout: 60 * time.Second}
+	resp, err := subClient.Do(req)
 	if err != nil {
 		return item, err
 	}
