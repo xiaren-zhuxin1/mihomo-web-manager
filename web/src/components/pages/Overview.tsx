@@ -3,7 +3,7 @@ import { Activity, FileCode2, Server, Settings2, Zap } from 'lucide-react';
 import { Panel, Metric, FlowHint, setPageGlobal } from '../ui';
 import { api } from '../../services/api';
 import {
-  readError, formatDelay, delayClass, resolveConcreteNode,
+  readError, formatDelay, delayClass, resolveConcreteNode, latestDelay,
   defaultTunForm, tunFormFromDiagnostics, parseTunDnsHijack,
   sameTunForm, readTunReloadError, describeMode, describeLogLevel
 } from '../../utils/helpers';
@@ -29,20 +29,58 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
       const data = await api<{ proxies: Record<string, ProxyNode> }>('/api/mihomo/proxies');
       const groups = Object.values(data.proxies || {}).filter((proxy) => Array.isArray(proxy.all) && proxy.all.length > 0);
       const result = groups.map((group) => {
-        let node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
-        const nodeInfo = data.proxies[node];
-        let displayNode = node;
-        if (node === group.name || !nodeInfo || Array.isArray(nodeInfo?.all)) {
-          displayNode = group.now && group.now !== group.name ? group.now : '自动选择';
+        const isLoadBalance = (group.type || '').toLowerCase() === 'loadbalance';
+        let displayNode: string;
+        let displayDelay: string;
+        let delayCls: string;
+        let healthStr: string;
+        let nodeType: string;
+        let provider: string;
+
+        if (isLoadBalance) {
+          const allNodes = group.all || [];
+          const subNodes = allNodes.map((n) => data.proxies[n]).filter(Boolean);
+          const alive = subNodes.filter((n) => n.alive !== false);
+          const dead = subNodes.filter((n) => n.alive === false);
+          const best = alive.length > 0 ? alive.sort((a, b) => latestDelay(a) - latestDelay(b))[0] : null;
+          const activeNames = alive.slice(0, 3).map((n) => {
+            const name = allNodes[subNodes.indexOf(n)];
+            return data.proxies[name]?.name || name;
+          });
+          displayNode = `${alive.length}/${allNodes.length} 节点正常`;
+          if (best) {
+            displayDelay = `最佳 ${formatDelay(best)}`;
+            delayCls = delayClass(best);
+          } else {
+            displayDelay = '- ms';
+            delayCls = 'unknown';
+          }
+          healthStr = dead.length > 0 && alive.length === 0 ? '异常' : alive.length > 0 ? '正常' : '未知';
+          nodeType = group.type || '-';
+          provider = '-';
+        } else {
+          let node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
+          const nodeInfo = data.proxies[node];
+          if (node === group.name || !nodeInfo || Array.isArray(nodeInfo?.all)) {
+            node = group.now && group.now !== group.name ? group.now : '自动选择';
+          }
+          displayNode = node;
+          const finalNodeInfo = data.proxies[displayNode] || nodeInfo;
+          displayDelay = finalNodeInfo ? formatDelay(finalNodeInfo) : '- ms';
+          delayCls = finalNodeInfo ? delayClass(finalNodeInfo) : 'unknown';
+          healthStr = finalNodeInfo?.alive === false ? '异常' : finalNodeInfo?.alive === true ? '正常' : '未知';
+          nodeType = finalNodeInfo?.type || group.type || '-';
+          provider = finalNodeInfo?.providerName || finalNodeInfo?.['provider-name'] || '-';
         }
+
         return {
           group: group.name,
           node: displayNode,
-          type: nodeInfo?.type || group.type || '-',
-          provider: nodeInfo?.providerName || nodeInfo?.['provider-name'] || '-',
-          delay: nodeInfo ? formatDelay(nodeInfo) : '- ms',
-          delayClass: nodeInfo ? delayClass(nodeInfo) : 'unknown',
-          healthy: nodeInfo?.alive === false ? '异常' : nodeInfo?.alive === true ? '正常' : '未知'
+          type: nodeType,
+          provider,
+          delay: displayDelay,
+          delayClass: delayCls,
+          healthy: healthStr
         };
       });
       setActiveGroups(result);
