@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Zap, Globe, Shield, ArrowRightLeft, Code2, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star, Cpu } from 'lucide-react';
+import { Zap, Globe, Shield, ArrowRightLeft, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star } from 'lucide-react';
 import { Panel, setPageGlobal } from '../ui';
 import { api } from '../../services/api';
 import type { ConfigProxyGroup, ConfigModel, Page } from '../../types';
@@ -14,7 +14,6 @@ const MODES: Array<{
   title: string;
   subtitle: string;
   desc: string;
-  detail: string;
   groups: ConfigProxyGroup[];
   tags: string[];
   recommended?: boolean;
@@ -23,154 +22,125 @@ const MODES: Array<{
     key: 'minimal',
     icon: <Zap size={28} />,
     title: '极简模式',
-    subtitle: '零配置上手',
-    desc: '最简单的方案。所有流量走同一条线路，系统自动选最快的节点。点一下就能用。',
-    detail: '1 个全局选择组 + 1 个自动测速组。适合第一次使用、不想折腾的用户。',
+    subtitle: '最简单省心',
+    desc: '只有 2 个策略组：一个全局选择 + 自动测速选最快节点。适合不想折腾的用户。',
     groups: [
       g('PROXY', 'select', ['AUTO', 'DIRECT']),
       g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
     ],
-    tags: ['2 个策略组', '一键切换']
+    tags: ['2 个组', '一键切换']
   },
   {
-    key: 'smart',
+    key: 'daily',
     icon: <Globe size={28} />,
-    title: '智能分流',
-    subtitle: '推荐大多数人',
-    desc: '按网站自动分流：AI 服务走美区、GitHub 走日本、视频走香港。每个服务都走最优线路。',
-    detail: '9 个频道覆盖主流海外服务。Google/OpenAI/Netflix/YouTube/Twitter/Telegram 各自独立测速选最优节点。',
+    title: '日常模式',
+    subtitle: '推荐大多数用户',
+    desc: '按地区分组（港/日/新/美），每个地区可手动选节点，同时有自动测速和故障转移。兼顾灵活性和稳定性。',
     groups: [
-      g('PROXY', 'select', ['GITHUB', 'GOOGLE', 'OPENAI', 'NETFLIX', 'YOUTUBE', 'TWITTER', 'TELEGRAM', 'AUTO', 'DIRECT']),
-      g('GITHUB', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('GOOGLE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('OPENAI', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('NETFLIX', 'url-test', [], ['all'], { url: 'https://www.netflix.com', interval: '600' }),
-      g('YOUTUBE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('TWITTER', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('TELEGRAM', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
+      g('PROXY', 'select', ['AUTO', 'FAILOVER', 'BALANCE', 'OVERSEAS', 'DIRECT']),
+      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
+      g('FAILOVER', 'fallback', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
+      g('BALANCE', 'load-balance', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
+      g('HK', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('JP', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('SG', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('US', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('OVERSEAS', 'select', ['HK', 'JP', 'SG', 'US', 'AUTO', 'FAILOVER', 'BALANCE', 'DIRECT'])
     ],
-    tags: ['9 个频道', '按网站分流'],
+    tags: ['9 个组', '按地区分流'],
     recommended: true
-  },
-  {
-    key: 'dev',
-    icon: <Code2 size={28} />,
-    title: '开发者模式',
-    subtitle: '程序员专用',
-    desc: '为开发者优化：GitHub/GitLab 拉代码飞快、Docker 镜像秒下、NPM/PyPI 不再超时、StackOverflow 秒开。',
-    detail: '专门针对开发工具链优化。GitHub/GitLab/Docker Hub/npm/pip/Stack Overflow/Vercel/Cloudflare 各自选最优节点，开发体验大幅提升。',
-    groups: [
-      g('PROXY', 'select', ['GITHUB', 'DOCKER', 'NPM', 'GOOGLE', 'MISC-DEV', 'AUTO', 'DIRECT']),
-      g('GITHUB', 'url-test', [], ['all'], { url: 'https://github.com', interval: '300' }),
-      g('DOCKER', 'url-test', [], ['all'], { url: 'https://registry-1.docker.io/v2/', interval: '600' }),
-      g('NPM', 'url-test', [], ['all'], { url: 'https://registry.npmjs.org', interval: '300' }),
-      g('GOOGLE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('MISC-DEV', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
-    ],
-    tags: ['6 个频道', '开发加速']
   },
   {
     key: 'media',
     icon: <Tv size={28} />,
     title: '流媒体模式',
     subtitle: '追剧看片党',
-    desc: 'Netflix、YouTube、Disney+、Spotify、HBO 各走各的专用线路。4K 不卡顿，音乐不中断。',
-    detail: '流媒体平台各自独立选节点。Netflix 用专用解锁节点（测试间隔长避免频繁切换），YouTube 选大带宽节点，Spotify 选低延迟节点。',
+    desc: '在日常模式基础上增加专用流媒体频道。Netflix/YouTube 各走各的线路，解锁更稳定，4K 不卡。',
     groups: [
-      g('PROXY', 'select', ['NETFLIX', 'YOUTUBE', 'DISNEY', 'SPOTIFY', 'PRIME', 'HBO', 'AUTO', 'DIRECT']),
-      g('NETFLIX', 'url-test', [], ['all'], { url: 'https://www.netflix.com', interval: '600', tolerance: '100' }),
+      g('PROXY', 'select', ['STREAMING', 'AUTO', 'FAILOVER', 'BALANCE', 'OVERSEAS', 'DIRECT']),
+      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
+      g('FAILOVER', 'fallback', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
+      g('BALANCE', 'load-balance', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
+      g('NETFLIX', 'url-test', [], ['all'], { url: 'https://www.netflix.com', interval: '600' }),
       g('YOUTUBE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('DISNEY', 'url-test', [], ['all'], { url: 'https://disneyplus.com', interval: '600' }),
-      g('SPOTIFY', 'url-test', [], ['all'], { url: 'https://spclient.wg.spotify.com', interval: '300' }),
-      g('PRIME', 'url-test', [], ['all'], { url: 'https://www.primevideo.com', interval: '600' }),
-      g('HBO', 'url-test', [], ['all'], { url: 'https://www.hbomax.com', interval: '600' }),
-      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
+      g('HK', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('JP', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('SG', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('US', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('OVERSEAS', 'select', ['HK', 'JP', 'SG', 'US', 'NETFLIX', 'YOUTUBE', 'AUTO', 'FAILOVER', 'BALANCE', 'DIRECT']),
+      g('STREAMING', 'select', ['NETFLIX', 'YOUTUBE', 'US', 'JP', 'SG', 'AUTO', 'DIRECT'])
     ],
-    tags: ['7 个频道', '流媒体解锁']
+    tags: ['12 个组', '流媒体优化']
   },
   {
     key: 'gaming',
     icon: <Gamepad2 size={28} />,
     title: '游戏加速模式',
     subtitle: '低延迟优先',
-    desc: 'Steam、Epic、Battle.net、Xbox、PlayStation 各自选延迟最低的节点。FPS 游戏不再卡顿掉包。',
-    detail: '游戏平台用 fallback（故障转移）策略，优先低延迟节点，挂了立即切备用。配合短间隔测速确保实时性。',
+    desc: '短间隔实时测延迟，故障转移确保不断线。Steam/Epic/主机游戏低延迟不卡顿。',
     groups: [
-      g('PROXY', 'select', ['STEAM', 'EPIC', 'BATTLENET', 'CONSOLE', 'GAME-MISC', 'AUTO', 'DIRECT']),
-      g('STEAM', 'fallback', [], ['all'], { url: 'http://www.steampowered.com', interval: '120' }),
-      g('EPIC', 'fallback', [], ['all'], { url: 'https://www.epicgames.com', interval: '120' }),
-      g('BATTLENET', 'fallback', [], ['all'], { url: 'https://us.battle.net', interval: '120' }),
-      g('CONSOLE', 'fallback', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
-      g('GAME-MISC', 'fallback', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
-      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '180' })
+      g('PROXY', 'select', ['GAME', 'AUTO', 'FAILOVER', 'JP', 'US', 'DIRECT']),
+      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '180' }),
+      g('FAILOVER', 'fallback', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '120' }),
+      g('GAME', 'fallback', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('JP', 'select', ['GAME', 'AUTO', 'FAILOVER', 'DIRECT']),
+      g('US', 'select', ['GAME', 'AUTO', 'FAILOVER', 'DIRECT']),
+      g('HK', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('SG', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('OVERSEAS', 'select', ['JP', 'US', 'HK', 'SG', 'GAME', 'AUTO', 'FAILOVER', 'DIRECT'])
     ],
-    tags: ['6 个频道', '低延迟']
+    tags: ['9 个组', '120s 测速']
   },
   {
     key: 'balance',
     icon: <ArrowRightLeft size={28} />,
     title: '负载均衡模式',
     subtitle: '带宽最大化',
-    desc: '同时利用多个节点的带宽叠加。下载速度翻倍，多人同时上网互不影响。',
-    detail: 'Load-Balance 策略把流量分散到所有节点，总带宽 ≈ 所有节点之和。适合下载大文件、PT 用户、多设备家庭网络。',
+    desc: '所有节点同时工作，总带宽叠加。下载大文件、PT、多人上网首选。',
     groups: [
       g('PROXY', 'select', ['BALANCE', 'FAST', 'DIRECT']),
-      g('BALANCE', 'load-balance', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300', strategy: 'consistent-hashing' }),
+      g('BALANCE', 'load-balance', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
       g('FAST', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '200' })
     ],
-    tags: ['3 个策略组', '多倍带宽']
+    tags: ['3 个组', '多倍带宽']
   },
   {
     key: 'ha',
     icon: <Shield size={28} />,
     title: '高可用模式',
     subtitle: '稳定第一',
-    desc: '主备双保险。主节点故障瞬间切换到备用，断线概率降到最低。适合办公、远程桌面等不能断网的场景。',
-    detail: 'Fallback 策略确保主节点挂了自动切备用。MAIN 组用 fallback 保证连续性，BACKUP 组用 url-test 选最优备用。',
+    desc: '主备双保险，故障自动切换。办公/远程桌面等不能断网的场景。',
     groups: [
       g('PROXY', 'select', ['MAIN', 'BACKUP', 'AUTO', 'DIRECT']),
-      g('MAIN', 'fallback', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '180' }),
+      g('MAIN', 'fallback', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '180' }),
       g('BACKUP', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
       g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
     ],
-    tags: ['4 个策略组', '主备切换']
+    tags: ['4 个组', '主备切换']
   },
   {
-    key: 'ultimate',
+    key: 'full',
     icon: <Layers size={28} />,
-    title: '全能模式',
-    subtitle: '最全面方案',
-    desc: '集大成者。按用途分 5 大类共 15 个频道：开发工具、AI 服务、流媒体、游戏、通用。每个场景都有最优线路。',
-    detail: '最完整的策略组体系。开发/AI/流媒体/游戏/通用五大分区，每个分区内部再细分。适合对网络质量要求高的高级用户。',
+    title: '完整模式',
+    subtitle: '功能最全',
+    desc: '包含所有功能：地区选择 + 流媒体 + 游戏加速 + 负载均衡 + 高可用。适合高级玩家。',
     groups: [
-      g('PROXY', 'select', [
-        'DEV-GITHUB', 'DEV-DOCKER', 'DEV-NPM',
-        'AI-OPENAI', 'AI-COPILOT', 'AI-ANTHROPIC',
-        'MEDIA-NETFLIX', 'MEDIA-YOUTUBE', 'MEDIA-DISNEY',
-        'GAME-STEAM', 'GAME-EPIC',
-        'GENERAL-GOOGLE', 'GENERAL-TWITTER', 'GENERAL-TELEGRAM',
-        'AUTO', 'DIRECT'
-      ]),
-      g('DEV-GITHUB', 'url-test', [], ['all'], { url: 'https://github.com', interval: '300' }),
-      g('DEV-DOCKER', 'url-test', [], ['all'], { url: 'https://registry-1.docker.io/v2/', interval: '600' }),
-      g('DEV-NPM', 'url-test', [], ['all'], { url: 'https://registry.npmjs.org', interval: '300' }),
-      g('AI-OPENAI', 'url-test', [], ['all'], { url: 'https://api.openai.com', interval: '200' }),
-      g('AI-COPILOT', 'url-test', [], ['all'], { url: 'https://api.githubcopilot.com', interval: '200' }),
-      g('AI-ANTHROPIC', 'url-test', [], ['all'], { url: 'https://api.anthropic.com', interval: '200' }),
-      g('MEDIA-NETFLIX', 'url-test', [], ['all'], { url: 'https://www.netflix.com', interval: '600' }),
-      g('MEDIA-YOUTUBE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('MEDIA-DISNEY', 'url-test', [], ['all'], { url: 'https://disneyplus.com', interval: '600' }),
-      g('GAME-STEAM', 'fallback', [], ['all'], { url: 'http://www.steampowered.com', interval: '120' }),
-      g('GAME-EPIC', 'fallback', [], ['all'], { url: 'https://www.epicgames.com', interval: '120' }),
-      g('GENERAL-GOOGLE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('GENERAL-TWITTER', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('GENERAL-TELEGRAM', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
-      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' })
+      g('PROXY', 'select', ['STREAMING', 'GAME', 'OVERSEAS', 'BALANCE', 'AUTO', 'FAILOVER', 'DIRECT']),
+      g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
+      g('FAILOVER', 'fallback', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '200' }),
+      g('BALANCE', 'load-balance', [], ['all'], { url: 'https://www.gstatic.com/generate_204', interval: '300' }),
+      g('NETFLIX', 'url-test', [], ['all'], { url: 'https://www.netflix.com', interval: '600' }),
+      g('YOUTUBE', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
+      g('GAME', 'fallback', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('HK', 'select', ['AUTO', 'FAILOVER', 'GAME', 'DIRECT']),
+      g('JP', 'select', ['AUTO', 'FAILOVER', 'GAME', 'DIRECT']),
+      g('SG', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
+      g('US', 'select', ['AUTO', 'FAILOVER', 'GAME', 'DIRECT']),
+      g('OVERSEAS', 'select', ['HK', 'JP', 'SG', 'US', 'NETFLIX', 'YOUTUBE', 'GAME', 'AUTO', 'FAILOVER', 'BALANCE', 'DIRECT']),
+      g('STREAMING', 'select', ['NETFLIX', 'YOUTUBE', 'US', 'JP', 'SG', 'AUTO', 'DIRECT']),
+      g('ALL-NODES', 'select', ['DIRECT'])
     ],
-    tags: ['16 个策略组', '5 大分区'],
-    recommended: true
+    tags: ['14 个组', '全功能']
   }
 ];
 
@@ -269,7 +239,7 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
     <div className="stack">
       <div style={{ marginBottom: '8px' }}>
         <h3 style={{ margin: 0 }}>分流模式</h3>
-        <p className="textMuted" style={{ margin: '4px 0 0', fontSize: '13px' }}>选择一套预设方案，一键应用到你的代理。不懂就选带 ⭐ 的推荐。</p>
+        <p className="textMuted" style={{ margin: '4px 0 0', fontSize: '13px' }}>选择一套方案，一键应用到你的代理。应用后会替换当前所有策略组。不懂就选带 ⭐ 的推荐。</p>
       </div>
 
       {message && (
@@ -309,7 +279,7 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
         <Info size={18} style={{ color: 'var(--accent-primary)', flexShrink: 0, marginTop: '1px' }} />
         <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
           <strong style={{ color: 'var(--text-primary)' }}>当前状态：</strong>
-          共 <b>{groups.length}</b> 个策略组 · 使用 <b>{providers.length > 0 ? providers.join(', ') : '无'}</b> 节点资源
+          共 <b>{groups.length}</b> 个策略组 · 节点资源: <b>{providers.length > 0 ? providers.join(', ') : '无'}</b>
           {' · '}
           <button className="linkBtn" onClick={() => setShowAdvanced(!showAdvanced)}>
             {showAdvanced ? '收起详情' : '查看/管理策略组'}
@@ -330,7 +300,7 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
                     <span className="typeBadge">{typeLabel(g.type)}</span>
                   </div>
                   <div className="groupListMeta">
-                    {(g.proxies.length > 0) && <span>{g.proxies.length} 个引用</span>}
+                    {(g.proxies.length > 0) && <span>{g.proxies.length} 个引用: {g.proxies.slice(0, 5).join(', ')}{g.proxies.length > 5 ? '...' : ''}</span>}
                     {(g.use.length > 0) && <span>资源: {g.use.join(', ')}</span>}
                   </div>
                 </div>
