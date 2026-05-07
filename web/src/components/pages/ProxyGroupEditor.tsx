@@ -1,35 +1,30 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Trash2, Edit3, RotateCcw, LayoutGrid, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Zap, Globe, Shield, ArrowRightLeft, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info } from 'lucide-react';
 import { Panel, setPageGlobal } from '../ui';
 import { api } from '../../services/api';
 import type { ConfigProxyGroup, ConfigModel, Page } from '../../types';
 
-const GROUP_TYPES = [
-  { value: 'select', label: 'Select（手动选择）' },
-  { value: 'url-test', label: 'URL-Test（延迟测试）' },
-  { value: 'fallback', label: 'Fallback（故障转移）' },
-  { value: 'load-balance', label: 'Load-Balance（负载均衡）' },
-  { value: 'relay', label: 'Relay（链式代理）' }
-];
-
-const PRESET_TEMPLATES: Record<string, {
-  name: string;
-  desc: string;
-  groups: ConfigProxyGroup[];
-}> = {
-  simple: {
-    name: '简洁模式',
-    desc: '一个全局选择组 + 自动测速，适合简单场景',
+const MODES = [
+  {
+    key: 'simple',
+    icon: <Zap size={28} />,
+    title: '简单模式',
+    subtitle: '推荐新手使用',
+    desc: '所有流量走同一条线路，自动选最快的节点。最省心，不用管。',
     groups: [
       { name: 'GLOBAL', type: 'select', proxies: ['AUTO', 'DIRECT'], use: [] },
       { name: 'AUTO', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' }
-    ]
+    ],
+    tags: ['自动选最快', '一键切换']
   },
-  smart: {
-    name: '智能分流',
-    desc: '按服务自动选择最优节点，覆盖主流网站',
+  {
+    key: 'smart',
+    icon: <Globe size={28} />,
+    title: '智能分流',
+    subtitle: '推荐大多数用户',
+    desc: '不同网站自动走不同节点。GitHub 走日本、Google 走美国、Netflix 走专用节点。速度更快更稳定。',
     groups: [
-      { name: 'GLOBAL', type: 'select', proxies: ['GITHUB', 'GOOGLE', 'OPENAI', 'NETFLIX', 'YOUTUBE', 'TWITTER', 'TELEGRAM', 'AUTO', 'DIRECT'], use: [] },
+      { name: 'PROXY', type: 'select', proxies: ['GITHUB', 'GOOGLE', 'OPENAI', 'NETFLIX', 'YOUTUBE', 'TWITTER', 'TELEGRAM', 'AUTO', 'DIRECT'], use: [] },
       { name: 'GITHUB', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'GOOGLE', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'OPENAI', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
@@ -38,36 +33,45 @@ const PRESET_TEMPLATES: Record<string, {
       { name: 'TWITTER', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'TELEGRAM', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'AUTO', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' }
-    ]
+    ],
+    tags: ['按网站分流', '9 个频道']
   },
-  balance: {
-    name: '负载均衡',
-    desc: '使用 LoadBalance 同时利用多个节点',
+  {
+    key: 'balance',
+    icon: <ArrowRightLeft size={28} />,
+    title: '负载均衡',
+    subtitle: '适合带宽需求大',
+    desc: '同时使用多个节点分担流量。下载大文件、多人同时上网时更快。像多车道并行。',
     groups: [
-      { name: 'GLOBAL', type: 'select', proxies: ['BALANCE', 'AUTO', 'DIRECT'], use: [] },
+      { name: 'PROXY', type: 'select', proxies: ['BALANCE', 'AUTO', 'DIRECT'], use: [] },
       { name: 'BALANCE', type: 'load-balance', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'AUTO', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' }
-    ]
+    ],
+    tags: ['多节点并发', '大带宽']
   },
-  fallback: {
-    name: '故障转移',
-    desc: '主备切换，主节点故障时自动切换备用',
+  {
+    key: 'fallback',
+    icon: <Shield size={28} />,
+    title: '高可用模式',
+    subtitle: '适合对稳定性要求高',
+    desc: '主节点挂了自动切换备用。主备双保险，断线概率最低。',
     groups: [
-      { name: 'GLOBAL', type: 'select', proxies: ['MAIN', 'BACKUP', 'AUTO', 'DIRECT'], use: [] },
+      { name: 'PROXY', type: 'select', proxies: ['MAIN', 'BACKUP', 'AUTO', 'DIRECT'], use: [] },
       { name: 'MAIN', type: 'fallback', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'BACKUP', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' },
       { name: 'AUTO', type: 'url-test', proxies: [], use: ['all'], url: 'http://www.gstatic.com/generate_204', interval: '300' }
-    ]
+    ],
+    tags: ['主备切换', '不断线']
   }
-};
+];
 
 export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [groups, setGroups] = useState<ConfigProxyGroup[]>([]);
   const [providers, setProviders] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [editing, setEditing] = useState<ConfigProxyGroup | null>(null);
-  const [showPresets, setShowPresets] = useState(false);
+  const [applyingMode, setApplyingMode] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -90,22 +94,27 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
 
   const showMessage = (msg: string) => {
     setMessage(msg);
-    setTimeout(() => setMessage(''), 3000);
+    setTimeout(() => setMessage(''), 4000);
   };
 
-  const saveGroup = async (group: ConfigProxyGroup) => {
+  const applyMode = async (modeKey: string) => {
+    const mode = MODES.find((m) => m.key === modeKey);
+    if (!mode) return;
+    setApplyingMode(modeKey);
     setBusy(true);
     try {
-      await api('/api/config/proxy-groups/' + encodeURIComponent(group.name), {
-        method: 'PUT',
-        body: JSON.stringify(group)
-      });
-      showMessage(`策略组 "${group.name}" 已保存`);
-      setEditing(null);
+      for (const group of mode.groups) {
+        await api('/api/config/proxy-groups/' + encodeURIComponent(group.name), {
+          method: 'PUT',
+          body: JSON.stringify(group)
+        });
+      }
+      showMessage(`已切换到「${mode.title}」`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      setApplyingMode(null);
       setBusy(false);
     }
   };
@@ -114,7 +123,7 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
     setBusy(true);
     try {
       await api('/api/config/proxy-groups/' + encodeURIComponent(name), { method: 'DELETE' });
-      showMessage(`策略组 "${name}" 已删除`);
+      showMessage('已删除');
       setConfirmDelete(null);
       await load();
     } catch (err) {
@@ -139,264 +148,127 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
     }
   };
 
-  const applyPreset = async (presetKey: string) => {
-    const preset = PRESET_TEMPLATES[presetKey];
-    if (!preset) return;
-    setBusy(true);
-    try {
-      for (const group of preset.groups) {
-        await api('/api/config/proxy-groups/' + encodeURIComponent(group.name), {
-          method: 'PUT',
-          body: JSON.stringify(group)
-        });
-      }
-      showMessage(`已应用预设模板: ${preset.name}`);
-      setShowPresets(false);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const typeLabel = (t: string) => ({
+    select: '手动选择',
+    'url-test': '自动测速',
+    fallback: '故障转移',
+    'load-balance': '负载均衡',
+    relay: '链式代理'
+  }[t] || t);
 
-  const availableTargets = [...groups.map(g => g.name), ...providers, 'DIRECT', 'REJECT', 'REJECT-DROP'];
+  const hasGlobal = groups.some((g) => g.name === 'PROXY' || g.name === 'GLOBAL');
+  const hasAutoTest = groups.some((g) => g.type === 'url-test');
+  const hasBalance = groups.some((g) => g.type === 'load-balance');
 
   return (
     <div className="stack">
-      <div className="flexBetween">
-        <div>
-          <h3 style={{ margin: 0 }}>策略组管理</h3>
-          <p className="textMuted" style={{ margin: '4px 0 0' }}>
-            管理、编辑、重置代理策略组配置
-          </p>
+      <div style={{ marginBottom: '8px' }}>
+        <h3 style={{ margin: 0 }}>分流模式</h3>
+        <p className="textMuted" style={{ margin: '4px 0 0', fontSize: '13px' }}>选择一个模式，决定你的网络流量怎么走。不懂就选「智能分流」。</p>
+      </div>
+
+      {message && (
+        <div className="notice" style={{ display: 'flex', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.3s ease' }}>
+          <CheckCircle2 size={16} />{message}
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="button secondary" onClick={() => setShowPresets(!showPresets)}>
-            <LayoutGrid size={16} /> 预设模板
-          </button>
-          <button className="button primary" onClick={() => setEditing({ name: '', type: 'select', proxies: [], use: [] })}>
-            <Plus size={16} /> 新建策略组
+      )}
+      {error && <div className="notice error">{error}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+        {MODES.map((mode) => {
+          const isApplying = applyingMode === mode.key;
+          return (
+            <button
+              key={mode.key}
+              className={`modeCard${isApplying ? ' applying' : ''}`}
+              onClick={() => applyMode(mode.key)}
+              disabled={!!applyingMode}
+            >
+              <div className="modeCardIcon">{mode.icon}</div>
+              <div className="modeCardBody">
+                <strong>{mode.title}</strong>
+                <span className="modeCardSub">{mode.subtitle}</span>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '6px 0 0', lineHeight: '1.5' }}>{mode.desc}</p>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  {mode.tags.map((tag) => (
+                    <span key={tag} className="tag">{tag}</span>
+                  ))}
+                </div>
+              </div>
+              {isApplying && <div className="modeCardOverlay"><RotateCcw size={20} className="spin" /><span>应用中...</span></div>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{
+        marginTop: '16px', padding: '12px 16px', borderRadius: 'var(--radius-md)',
+        background: 'var(--bg-active)', border: '1px solid var(--border-light)', display: 'flex', gap: '10px', alignItems: 'flex-start'
+      }}>
+        <Info size={18} style={{ color: 'var(--accent-primary)', flexShrink: 0, marginTop: '1px' }} />
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>当前配置：</strong>
+          共 <b>{groups.length}</b> 个策略组
+          {hasGlobal && ' · 有全局选择组'}
+          {hasAutoTest && ' · 有自动测速'}
+          {hasBalance && ' · 有负载均衡'}
+          {!hasGlobal && !hasAutoTest && !hasBalance && ' · 配置可能不完整'}
+          {' · '}
+          <button
+            style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '0 2px', fontSize: 'inherit' }}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            {showAdvanced ? '收起详情' : '查看详情'} {showAdvanced ? <ChevronUp size={13} style={{ verticalAlign: 'middle' }} /> : <ChevronDown size={13} style={{ verticalAlign: 'middle' }} />}
           </button>
         </div>
       </div>
 
-      {message && <div className="notice" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><CheckCircle2 size={16} />{message}</div>}
-      {error && <div className="notice error">{error}</div>}
-
-      {showPresets && (
-        <Panel title="选择预设模板" icon={<LayoutGrid size={18} />}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {Object.entries(PRESET_TEMPLATES).map(([key, t]) => (
-              <div key={key} className="presetCard" onClick={() => applyPreset(key)}>
-                <strong>{t.name}</strong>
-                <p className="textMuted" style={{ fontSize: '12px', margin: '4px 0 8px' }}>{t.desc}</p>
-                <span className="tag">{t.groups.length} 个策略组</span>
+      {showAdvanced && (
+        <Panel title={`当前策略组 (${groups.length})`} icon={<Settings size={18} />}>
+          {groups.length === 0 && <p className="empty">暂无策略组，请从上方选择一个模式</p>}
+          <div className="groupList">
+            {groups.map((g, i) => (
+              <div key={g.name} className="groupListItem">
+                <div className="groupListMain">
+                  <div className="groupListInfo">
+                    <span className="groupName">{g.name}</span>
+                    <span className="typeBadge">{typeLabel(g.type)}</span>
+                  </div>
+                  <div className="groupListMeta">
+                    {(g.proxies.length > 0) && <span>{g.proxies.length} 个引用</span>}
+                    {(g.use.length > 0) && <span>使用 {g.use.join(', ')}</span>}
+                  </div>
+                </div>
+                <div className="groupListActions">
+                  <button className="iconButton small" title="上移" disabled={i === 0} onClick={() => moveGroup(g.name, 'up')}>
+                    <ChevronUp size={14} />
+                  </button>
+                  <button className="iconButton small" title="下移" disabled={i === groups.length - 1} onClick={() => moveGroup(g.name, 'down')}>
+                    <ChevronDown size={14} />
+                  </button>
+                  {confirmDelete === g.name ? (
+                    <>
+                      <button className="iconButton small danger" title="确认删除" onClick={() => deleteGroup(g.name)}>
+                        <CheckCircle2 size={14} />
+                      </button>
+                      <button className="iconButton small" title="取消" onClick={() => setConfirmDelete(null)}>
+                        <AlertTriangle size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <button className="iconButton small danger" title="删除" onClick={() => setConfirmDelete(g.name)}>
+                      <AlertTriangle size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </Panel>
       )}
 
-      {editing !== null && (
-        <GroupEditorForm
-          group={editing}
-          availableTargets={availableTargets}
-          providers={providers}
-          onSave={saveGroup}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
-      <Panel title={`当前策略组 (${groups.length})`} icon={<LayoutGrid size={18} />}>
-        {groups.length === 0 && <p className="empty">暂无策略组，请选择预设模板或手动创建</p>}
-        <div className="groupList">
-          {groups.map((g, i) => (
-            <div key={g.name} className="groupListItem">
-              <div className="groupListMain">
-                <div className="groupListInfo">
-                  <span className="groupName">{g.name}</span>
-                  <span className="typeBadge">{g.type}</span>
-                </div>
-                <div className="groupListMeta">
-                  {g.proxies.length > 0 && <span>{g.proxies.length} 个节点</span>}
-                  {g.use.length > 0 && <span>{g.use.length} 个资源</span>}
-                  {g.url && <span>URL测试</span>}
-                </div>
-              </div>
-              <div className="groupListActions">
-                <button className="iconButton small" title="上移" disabled={i === 0} onClick={() => moveGroup(g.name, 'up')}>
-                  <ChevronUp size={14} />
-                </button>
-                <button className="iconButton small" title="下移" disabled={i === groups.length - 1} onClick={() => moveGroup(g.name, 'down')}>
-                  <ChevronDown size={14} />
-                </button>
-                <button className="iconButton small" title="编辑" onClick={() => setEditing({ ...g })}>
-                  <Edit3 size={14} />
-                </button>
-                {confirmDelete === g.name ? (
-                  <>
-                    <button className="iconButton small danger" title="确认删除" onClick={() => deleteGroup(g.name)}>
-                      <CheckCircle2 size={14} />
-                    </button>
-                    <button className="iconButton small" title="取消" onClick={() => setConfirmDelete(null)}>
-                      <X size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <button className="iconButton small danger" title="删除" onClick={() => setConfirmDelete(g.name)}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <FlowHint upstream={{ label: '代理策略 - 切换节点', page: 'proxies' }} downstream={{ label: '系统配置 - 直接编辑 YAML', page: 'config' }} />
+      <FlowHint upstream={{ label: '代理策略 - 切换节点', page: 'proxies' }} downstream={{ label: '系统配置', page: 'config' }} />
     </div>
-  );
-}
-
-function GroupEditorForm({
-  group, availableTargets, providers, onSave, onCancel
-}: {
-  group: ConfigProxyGroup;
-  availableTargets: string[];
-  providers: string[];
-  onSave: (g: ConfigProxyGroup) => void;
-  onCancel: () => void;
-}) {
-  const [form, setForm] = useState<ConfigProxyGroup>({
-    ...group,
-    proxies: group.proxies || [],
-    use: group.use || []
-  });
-  const [proxyInput, setProxyInput] = useState('');
-
-  const isAutoTest = form.type === 'url-test' || form.type === 'fallback' || form.type === 'load-balance';
-  const isNew = !group.name;
-
-  return (
-    <Panel title={isNew ? '新建策略组' : `编辑策略组: ${group.name}`} icon={<Edit3 size={18} />}>
-      <div className="formGrid" style={{ maxWidth: '640px' }}>
-        <label className="field">
-          <span className="fieldLabel">名称 *</span>
-          <input
-            className="input"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="如: GLOBAL, GITHUB, AUTO"
-            disabled={!isNew}
-          />
-        </label>
-
-        <label className="field">
-          <span className="fieldLabel">类型 *</span>
-          <select className="select" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-            {GROUP_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-        </label>
-
-        <label className="field">
-          <span className="fieldLabel">使用节点资源 (use)</span>
-          <div className="chipRow">
-            {providers.map(p => (
-              <button
-                key={p}
-                className={`chip${form.use.includes(p) ? ' active' : ''}`}
-                onClick={() => setForm(f => ({
-                  ...f,
-                  use: f.use.includes(p) ? f.use.filter(x => x !== p) : [...f.use, p]
-                }))}
-              >
-                {p === 'all' ? '全部订阅' : p}
-              </button>
-            ))}
-            <button
-              className={`chip${form.use.includes('all') ? ' active' : ''}`}
-              onClick={() => setForm(f => ({
-                ...f,
-                use: f.use.includes('all') ? f.use.filter(x => x !== 'all') : [...f.use, 'all']
-              }))}
-            >
-              全部(all)
-            </button>
-          </div>
-        </label>
-
-        <label className="field">
-          <span className="fieldLabel">指定节点 (proxies)</span>
-          <div className="chipRow" style={{ flexWrap: 'wrap' }}>
-            {form.proxies.map(p => (
-              <span key={p} className="chip active" style={{ cursor: 'default' }}>
-                {p}
-                <X size={12} style={{ marginLeft: '4px', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, proxies: f.proxies.filter(x => x !== p) }))} />
-              </span>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-            <input
-              className="input"
-              value={proxyInput}
-              onChange={(e) => setProxyInput(e.target.value)}
-              placeholder="输入节点名或从下方选择..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && proxyInput.trim() && !form.proxies.includes(proxyInput.trim())) {
-                  setForm(f => ({ ...f, proxies: [...f.proxies, proxyInput.trim()] }));
-                  setProxyInput('');
-                }
-              }}
-            />
-          </div>
-          <div className="chipRow" style={{ marginTop: '6px', flexWrap: 'wrap' }}>
-            {['DIRECT', 'REJECT', 'REJECT-DROP'].filter(t => !form.proxies.includes(t)).map(t => (
-              <button key={t} className="chip" onClick={() => setForm(f => ({ ...f, proxies: [...f.proxies, t] }))}>{t}</button>
-            ))}
-            {availableTargets.filter(t =>
-              !['DIRECT', 'REJECT', 'REJECT-DROP'].includes(t) && !form.proxies.includes(t)
-            ).slice(0, 10).map(t => (
-              <button key={t} className="chip" onClick={() => setForm(f => ({ ...f, proxies: [...f.proxies, t] }))}>{t}</button>
-            ))}
-          </div>
-        </label>
-
-        {isAutoTest && (
-          <>
-            <label className="field">
-              <span className="fieldLabel">测试 URL</span>
-              <input
-                className="input"
-                value={form.url || ''}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                placeholder="http://www.gstatic.com/generate_204"
-              />
-            </label>
-            <label className="field">
-              <span className="fieldLabel">测试间隔 (秒)</span>
-              <input
-                className="input"
-                value={form.interval || ''}
-                onChange={(e) => setForm({ ...form, interval: e.target.value })}
-                placeholder="300"
-              />
-            </label>
-          </>
-        )}
-
-        <div className="field" style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-          <button className="button secondary" onClick={onCancel}>取消</button>
-          <button
-            className="button primary"
-            disabled={!form.name.trim() || !form.type}
-            onClick={() => onSave(form)}
-          >
-            {isNew ? '创建' : '保存'}
-          </button>
-        </div>
-      </div>
-    </Panel>
   );
 }
 
@@ -404,12 +276,8 @@ function FlowHint({ upstream, downstream }: { upstream?: { label: string; page: 
   if (!upstream && !downstream) return null;
   return (
     <div className="flowHint">
-      {upstream && (
-        <button className="flowHintBtn" onClick={() => setPageGlobal(upstream.page)}>&uarr; {upstream.label}</button>
-      )}
-      {downstream && (
-        <button className="flowHintBtn" onClick={() => setPageGlobal(downstream.page)}>&darr; {downstream.label}</button>
-      )}
+      {upstream && (<button className="flowHintBtn" onClick={() => setPageGlobal(upstream.page)}>&uarr; {upstream.label}</button>)}
+      {downstream && (<button className="flowHintBtn" onClick={() => setPageGlobal(downstream.page)}>&darr; {downstream.label}</button>)}
     </div>
   );
 }
