@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Zap, Globe, Shield, ArrowRightLeft, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star } from 'lucide-react';
+import { Zap, Globe, Shield, ArrowRightLeft, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star, Wifi } from 'lucide-react';
 import { Panel, setPageGlobal } from '../ui';
 import { api } from '../../services/api';
 import type { ConfigProxyGroup, ConfigModel, Page } from '../../types';
@@ -31,11 +31,32 @@ const MODES: Array<{
     tags: ['2 个组', '一键切换']
   },
   {
+    key: 'smart',
+    icon: <Wifi size={28} />,
+    title: '智能容灾',
+    subtitle: '推荐 · 最快+自动切换+优先同地区',
+    desc: '每个地区自动选最快节点，节点失效瞬间切换存活节点。选香港就优先走香港节点，香港全挂了自动切其他地区。全程无需手动干预。',
+    groups: [
+      g('PROXY', 'select', ['HK', 'JP', 'SG', 'US', 'AUTO-GLOBAL', 'DIRECT']),
+      g('AUTO-GLOBAL', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('HK', 'fallback', ['AUTO-HK', 'AUTO-GLOBAL'], []),
+      g('AUTO-HK', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('JP', 'fallback', ['AUTO-JP', 'AUTO-GLOBAL'], []),
+      g('AUTO-JP', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('SG', 'fallback', ['AUTO-SG', 'AUTO-GLOBAL'], []),
+      g('AUTO-SG', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' }),
+      g('US', 'fallback', ['AUTO-US', 'AUTO-GLOBAL'], []),
+      g('AUTO-US', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '120' })
+    ],
+    tags: ['10 个组', '容灾自愈'],
+    recommended: true
+  },
+  {
     key: 'daily',
     icon: <Globe size={28} />,
     title: '日常模式',
-    subtitle: '推荐大多数用户',
-    desc: '按地区分组（港/日/新/美），每个地区可手动选节点，同时有自动测速和故障转移。兼顾灵活性和稳定性。',
+    subtitle: '手动+自动混合',
+    desc: '按地区分组（港/日/新/美），每个地区可手动选具体节点或走自动策略。适合想精细控制的用户。',
     groups: [
       g('PROXY', 'select', ['AUTO', 'FAILOVER', 'BALANCE', 'OVERSEAS', 'DIRECT']),
       g('AUTO', 'url-test', [], ['all'], { url: 'http://www.gstatic.com/generate_204', interval: '300' }),
@@ -47,8 +68,7 @@ const MODES: Array<{
       g('US', 'select', ['AUTO', 'FAILOVER', 'DIRECT']),
       g('OVERSEAS', 'select', ['HK', 'JP', 'SG', 'US', 'AUTO', 'FAILOVER', 'BALANCE', 'DIRECT'])
     ],
-    tags: ['9 个组', '按地区分流'],
-    recommended: true
+    tags: ['9 个组', '灵活控制']
   },
   {
     key: 'media',

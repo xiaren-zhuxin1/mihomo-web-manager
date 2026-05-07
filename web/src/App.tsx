@@ -34,7 +34,7 @@ import {
   ProxyGroupEditor
 } from './components/pages';
 
-const FRONTEND_VERSION = 'v1.0.22';
+const FRONTEND_VERSION = 'v1.0.23';
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');
