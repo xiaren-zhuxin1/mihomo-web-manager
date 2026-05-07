@@ -202,10 +202,42 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
     setApplyingMode(modeKey);
     setBusy(true);
     try {
+      const model = await api<ConfigModel>('/api/config/model');
+      const realProviders = model.proxyProviders || [];
+      const existingNames = (model.proxyGroups || []).map((g: ConfigProxyGroup) => g.name);
+      const newNames = mode.groups.map((g) => g.name);
+      for (const name of existingNames) {
+        if (!newNames.includes(name)) {
+          try { await api('/api/config/proxy-groups/' + encodeURIComponent(name), { method: 'DELETE' }); } catch {}
+        }
+      }
+      const rules = model.rules || [];
+      for (let i = 0; i < rules.length; i++) {
+        const raw: any = rules[i];
+        const ruleStr: string = typeof raw === 'string' ? raw : Array.isArray(raw) ? (raw as string[]).join(',') : String(raw);
+        const parts: string[] = ruleStr.split(',');
+        const flags = ['no-resolve', 'noRedirect'];
+        let targetIdx = parts.length - 1;
+        while (targetIdx > 0 && flags.includes(parts[targetIdx])) { targetIdx--; }
+        const target = parts[targetIdx] || '';
+        if (target && !newNames.includes(target) && target !== 'DIRECT' && target !== 'PROXY' && target !== 'REJECT') {
+          try {
+            parts[targetIdx] = 'PROXY';
+            await api('/api/config/rules/' + i, {
+              method: 'PUT',
+              body: JSON.stringify({ rule: parts.join(',') })
+            });
+          } catch {}
+        }
+      }
       for (const group of mode.groups) {
+        const resolved = { ...group };
+        if (resolved.use && resolved.use.includes('all') && realProviders.length > 0) {
+          resolved.use = realProviders;
+        }
         await api('/api/config/proxy-groups/' + encodeURIComponent(group.name), {
           method: 'PUT',
-          body: JSON.stringify(group)
+          body: JSON.stringify(resolved)
         });
       }
       showMessage(`已应用「${mode.title}」(${mode.groups.length} 个策略组)`);
