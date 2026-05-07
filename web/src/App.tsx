@@ -32,7 +32,7 @@ import {
   ConfigEditor
 } from './components/pages';
 
-const FRONTEND_VERSION = 'v1.0.13';
+const FRONTEND_VERSION = 'v1.0.15';
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');

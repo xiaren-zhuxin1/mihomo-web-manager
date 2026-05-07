@@ -29,11 +29,15 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
       const data = await api<{ proxies: Record<string, ProxyNode> }>('/api/mihomo/proxies');
       const groups = Object.values(data.proxies || {}).filter((proxy) => Array.isArray(proxy.all) && proxy.all.length > 0);
       const result = groups.map((group) => {
-        const node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
+        let node = resolveConcreteNode(data.proxies || {}, group.now || group.name);
         const nodeInfo = data.proxies[node];
+        let displayNode = node;
+        if (node === group.name || !nodeInfo || Array.isArray(nodeInfo?.all)) {
+          displayNode = group.now && group.now !== group.name ? group.now : '自动选择';
+        }
         return {
           group: group.name,
-          node,
+          node: displayNode,
           type: nodeInfo?.type || group.type || '-',
           provider: nodeInfo?.providerName || nodeInfo?.['provider-name'] || '-',
           delay: nodeInfo ? formatDelay(nodeInfo) : '- ms',
@@ -91,7 +95,10 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
                 <span className={`delay inlineDelay ${item.delayClass}`}>{item.delay}</span>
               </div>
               <div className="activeGroupBody">
-                <span className="activeNodeName">{item.node}</span>
+                <div className="currentNodeRow">
+                  <span className="currentLabel">当前:</span>
+                  <span className="activeNodeName">{item.node}</span>
+                </div>
                 <span className={`statusPill ${item.healthy === '正常' ? 'good' : item.healthy === '异常' ? 'bad' : ''}`}>{item.healthy}</span>
               </div>
               <div className="activeGroupMeta">
