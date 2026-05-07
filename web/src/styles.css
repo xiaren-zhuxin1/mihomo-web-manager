@@ -618,6 +618,20 @@ h1 {
   gap: 8px;
 }
 
+.currentNodeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.currentLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
 .activeNodeName {
   font-size: 15px;
   font-weight: 700;
@@ -3783,4 +3797,115 @@ textarea:focus {
     opacity: 0.5;
     transform: scale(1.02);
   }
+}
+
+.flexBetween {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.presetCard {
+  padding: 16px;
+  border: 2px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.presetCard:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 16px rgba(31, 111, 235, 0.12);
+  transform: translateY(-2px);
+}
+
+.presetCard strong {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.groupList {
+  display: grid;
+  gap: 8px;
+}
+
+.groupListItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  transition: all var(--transition-fast);
+  gap: 12px;
+}
+
+.groupListItem:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.groupListMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.groupListInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.groupName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.typeBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary);
+  text-transform: uppercase;
+}
+
+.groupListMeta {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.groupListActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg-active);
+  color: var(--accent-primary);
 }

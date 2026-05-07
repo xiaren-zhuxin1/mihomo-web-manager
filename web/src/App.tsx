@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   BookOpen,
   Cable,
   FileCode2,
   Gauge,
+  LayoutGrid,
   List,
   ListTree,
   RefreshCw,
@@ -29,10 +30,11 @@ import {
   Topology,
   RoutingGuide,
   Maintenance,
-  ConfigEditor
+  ConfigEditor,
+  ProxyGroupEditor
 } from './components/pages';
 
-const FRONTEND_VERSION = 'v1.0.16';
+const FRONTEND_VERSION = 'v1.0.18';
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');
@@ -61,6 +63,7 @@ export default function App() {
     ['logs', Terminal, '实时日志', '运行监控'],
     ['guide', BookOpen, '路由向导', '代理路由'],
     ['proxies', Zap, '代理策略', '代理路由'],
+    ['groups', LayoutGrid, '策略组管理', '代理路由'],
     ['topology', ListTree, '路由拓扑', '代理路由'],
     ['rules', Shield, '规则命中', '代理路由'],
     ['subscriptions', Cable, '订阅管理', '配置维护'],
@@ -126,6 +129,7 @@ export default function App() {
           {page === 'maintenance' && <Maintenance setBusy={setBusy} />}
           {page === 'traffic' && <Traffic setBusy={setBusy} />}
           {page === 'proxies' && <Proxies setBusy={setBusy} />}
+          {page === 'groups' && <ProxyGroupEditor setBusy={setBusy} />}
           {page === 'connections' && <Connections setBusy={setBusy} />}
           {page === 'logs' && <Logs />}
           {page === 'subscriptions' && <Subscriptions setBusy={setBusy} />}

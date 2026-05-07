@@ -10,3 +10,4 @@ export { Rules } from './Rules';
 export { Providers } from './Providers';
 export { ConfigEditor } from './ConfigEditor';
 export { RoutingGuide } from './RoutingGuide';
+export { ProxyGroupEditor } from './ProxyGroupEditor';
