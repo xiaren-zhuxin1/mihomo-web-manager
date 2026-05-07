@@ -73,7 +73,12 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
   const load = useCallback(async () => {
     try {
       const data = await api<ConfigModel>('/api/config/model');
-      setGroups(data.proxyGroups || []);
+      const safeGroups = (data.proxyGroups || []).map((g) => ({
+        ...g,
+        proxies: g.proxies || [],
+        use: g.use || []
+      }));
+      setGroups(safeGroups);
       setProviders(data.proxyProviders || []);
       setError('');
     } catch (err) {
@@ -263,7 +268,11 @@ function GroupEditorForm({
   onSave: (g: ConfigProxyGroup) => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState<ConfigProxyGroup>({ ...group });
+  const [form, setForm] = useState<ConfigProxyGroup>({
+    ...group,
+    proxies: group.proxies || [],
+    use: group.use || []
+  });
   const [proxyInput, setProxyInput] = useState('');
 
   const isAutoTest = form.type === 'url-test' || form.type === 'fallback' || form.type === 'load-balance';
