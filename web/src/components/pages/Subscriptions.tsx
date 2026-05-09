@@ -178,6 +178,7 @@ function SubscriptionCard({
     setURL(item.url);
   }, [item.name, item.url]);
   const canEdit = item.managed;
+  const canDelete = true;
   const status = item.error ? '失败' : item.lastStatus === 'updated' ? '已更新' : validDate(item.updatedAt) ? '已更新' : '未刷新';
   return (
     <div className={item.exists ? 'subscriptionCard' : 'subscriptionCard warning'}>
@@ -195,8 +196,8 @@ function SubscriptionCard({
           <button className="iconButton" title="刷新订阅" onClick={() => onUpdate(item.id)} disabled={!item.exists}>
             <RefreshCw size={16} />
           </button>
-          {onDelete && item.managed && (
-            <button className="iconButton" title="删除订阅" onClick={() => onDelete(item.id)}>
+          {onDelete && canDelete && (
+            <button className="iconButton danger" title={item.managed ? "删除订阅" : "从配置移除引用"} onClick={() => onDelete(item.id)}>
               <Trash2 size={16} />
             </button>
           )}
