@@ -1,9 +1,36 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { AlertTriangle, Cable, FileCode2, ListTree, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, Cable, FileCode2, ListTree, Plus, RefreshCw, Save, Trash2, Wrench, AlertCircle } from 'lucide-react';
 import { Panel, Metric, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { readError, formatBytes, formatExpire, formatDate, formatUsage, usagePercent, validURL, validDate } from '../../utils/helpers';
 import type { Subscription } from '../../types';
+
+type ProviderIssue = {
+  type: string;
+  severity: string;
+  provider: string;
+  message: string;
+  fileExists: boolean;
+  canAutoFix: boolean;
+  usedByGroup?: string;
+};
+
+type SubRoutingIssue = {
+  type: string;
+  severity: string;
+  domain: string;
+  subName: string;
+  subURL: string;
+  message: string;
+  canAutoFix: boolean;
+};
+
+type ProviderDiagnostics = {
+  issues: SubRoutingIssue[];
+  canFixAll: boolean;
+  providerIssues: ProviderIssue[];
+  canFixAllProvider: boolean;
+};
 
 export function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -11,6 +38,8 @@ export function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void })
   const [newName, setNewName] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [diagnostics, setDiagnostics] = useState<ProviderDiagnostics | null>(null);
+  const [fixing, setFixing] = useState(false);
 
   const managed = useMemo(() => subscriptions.filter((item) => item.managed), [subscriptions]);
   const configProviders = useMemo(() => subscriptions.filter((item) => !item.managed), [subscriptions]);
@@ -29,8 +58,37 @@ export function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void })
     }
   };
 
+  const checkDiagnostics = async () => {
+    try {
+      const data = await api<ProviderDiagnostics>('/api/config/providers/diagnostics');
+      setDiagnostics(data);
+    } catch {
+      setDiagnostics(null);
+    }
+  };
+
+  const autoFixProviders = async () => {
+    if (!window.confirm('检测到配置问题，是否自动修复？\n\n这将补充缺失的 proxy-provider 定义和添加订阅域名直连规则。')) return;
+    setFixing(true);
+    try {
+      const result = await api<{ fixed: boolean; items?: string[]; reloadError?: string }>('/api/config/providers/autofix', { method: 'POST', body: '{}' });
+      if (result.fixed) {
+        setMessage(`已修复 ${result.items?.length || 0} 个问题`);
+        await load();
+        await checkDiagnostics();
+      } else if (result.reloadError) {
+        setError('修复成功但重载失败: ' + result.reloadError);
+      }
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setFixing(false);
+    }
+  };
+
   useEffect(() => {
     load();
+    checkDiagnostics();
   }, []);
 
   const createSubscription = async () => {
@@ -132,6 +190,42 @@ export function Subscriptions({ setBusy }: { setBusy: (busy: boolean) => void })
               </div>
             ))}
           </div>
+        </Panel>
+      )}
+
+      {diagnostics && ((diagnostics.providerIssues && diagnostics.providerIssues.length > 0) || (diagnostics.issues && diagnostics.issues.length > 0)) && (
+        <Panel title="配置诊断" icon={<AlertCircle size={18} style={{ color: 'var(--warning)' }} />}>
+          <div className="diagnosticList">
+            {diagnostics.providerIssues && diagnostics.providerIssues.map((issue, idx) => (
+              <div className="diagnostic" key={`p-${idx}`}>
+                <AlertCircle size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ color: 'var(--warning)' }}>{issue.provider}</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px' }}>{issue.message}</p>
+                  {issue.usedByGroup && <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>被策略组使用: {issue.usedByGroup}</p>}
+                  {!issue.fileExists && <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--accent-error)' }}>⚠️ provider 文件不存在，无法自动修复</p>}
+                </div>
+              </div>
+            ))}
+            {diagnostics.issues && diagnostics.issues.map((issue, idx) => (
+              <div className="diagnostic" key={`s-${idx}`}>
+                <AlertTriangle size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ color: 'var(--warning)' }}>{issue.domain}</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px' }}>{issue.message}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>订阅: {issue.subName}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {(diagnostics.canFixAll || diagnostics.canFixAllProvider) && (
+            <div style={{ marginTop: '12px' }}>
+              <button className="primary" onClick={autoFixProviders} disabled={fixing}>
+                <Wrench size={16} />
+                {fixing ? '正在修复...' : '一键修复'}
+              </button>
+            </div>
+          )}
         </Panel>
       )}
     </div>

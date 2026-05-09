@@ -60,6 +60,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/config/backups", s.auth(s.handleListConfigBackups))
 	mux.HandleFunc("GET /api/config/backups/{name}", s.auth(s.handleGetConfigBackup))
 	mux.HandleFunc("POST /api/config/backups/{name}/restore", s.auth(s.handleRestoreConfigBackup))
+	mux.HandleFunc("GET /api/config/providers/diagnostics", s.auth(s.handleProviderDiagnostics))
+	mux.HandleFunc("POST /api/config/providers/autofix", s.auth(s.handleProviderAutofix))
 	mux.HandleFunc("GET /api/subscriptions", s.auth(s.handleListSubscriptions))
 	mux.HandleFunc("POST /api/subscriptions", s.auth(s.handleCreateSubscription))
 	mux.HandleFunc("PATCH /api/subscriptions/{id}", s.auth(s.handleEditSubscription))

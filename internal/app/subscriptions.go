@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -283,24 +285,11 @@ func (s *Server) handleDeleteSubscription(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) refreshSubscription(item Subscription) (Subscription, error) {
-	req, err := http.NewRequest(http.MethodGet, item.URL, nil)
-	if err != nil {
-		return item, err
-	}
-	req.Header.Set("User-Agent", "Clash Verge/2.0 MihomoWebManager/0.1")
-	subClient := &http.Client{Timeout: 60 * time.Second}
-	resp, err := subClient.Do(req)
+	data, resp, err := s.fetchSubscription(item.URL)
 	if err != nil {
 		return item, err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	if err != nil {
-		return item, err
-	}
-	if resp.StatusCode >= 400 {
-		return item, fmt.Errorf("subscription returned %s", resp.Status)
-	}
 	if strings.TrimSpace(string(data)) == "" {
 		return item, fmt.Errorf("subscription returned empty content")
 	}
@@ -330,6 +319,142 @@ func (s *Server) refreshSubscription(item Subscription) (Subscription, error) {
 		return item, fmt.Errorf("provider update failed: %s", body)
 	}
 	return item, nil
+}
+
+func (s *Server) fetchSubscription(rawURL string) ([]byte, *http.Response, error) {
+	proxyAddr := s.mihomoProxyAddr()
+	var lastErr error
+
+	if proxyAddr != "" {
+		proxyURL, err := url.Parse("http://" + proxyAddr)
+		if err == nil {
+			data, resp, err := s.doFetch(rawURL, &http.Transport{
+				Proxy:                 http.ProxyURL(proxyURL),
+				TLSHandshakeTimeout:  15 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
+			}, 45*time.Second)
+			if err == nil {
+				return data, resp, nil
+			}
+			lastErr = fmt.Errorf("via proxy %s: %w", proxyAddr, err)
+		}
+	}
+
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, splitErr := net.SplitHostPort(addr)
+			if splitErr != nil {
+				return dialer.DialContext(ctx, network, addr)
+			}
+			if ip := net.ParseIP(host); ip != nil {
+				if !ip.IsPrivate() && !isFakeIP(ip) {
+					return dialer.DialContext(ctx, network, addr)
+				}
+			}
+			ips, _ := net.LookupIP(host)
+			allFake := true
+			for _, ip := range ips {
+				if !isFakeIP(ip) {
+					allFake = false
+					break
+				}
+			}
+			if allFake || len(ips) == 0 {
+				resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return dialer.DialContext(ctx, "udp", "8.8.8.8:53")
+				}}
+				addrs, lookupErr := resolver.LookupIPAddr(ctx, host)
+				if lookupErr == nil && len(addrs) > 0 {
+					ips = make([]net.IP, 0, len(addrs))
+					for _, a := range addrs {
+						ips = append(ips, a.IP)
+					}
+				}
+			}
+			var realIP net.IP
+			for _, ip := range ips {
+				if !isFakeIP(ip) && ip.To4() != nil {
+					realIP = ip
+					break
+				}
+			}
+			if realIP == nil {
+				for _, ip := range ips {
+					if !isFakeIP(ip) {
+						realIP = ip
+						break
+					}
+				}
+			}
+			if realIP == nil {
+				return nil, fmt.Errorf("no real IP found for %s (all fake-ip)", host)
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(realIP.String(), port))
+		},
+		TLSHandshakeTimeout:  15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
+
+	data, resp, err := s.doFetch(rawURL, transport, 45*time.Second)
+	if err != nil {
+		if lastErr != nil {
+			return nil, nil, fmt.Errorf("proxy failed (%s), direct also failed: %w", lastErr, err)
+		}
+		return nil, nil, err
+	}
+	return data, resp, nil
+}
+
+func isFakeIP(ip net.IP) bool {
+	if ip.To4() == nil {
+		return false
+	}
+	return ip.To4()[0] == 198 && ip.To4()[1] == 18
+}
+
+func (s *Server) doFetch(rawURL string, transport http.RoundTripper, timeout time.Duration) ([]byte, *http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("User-Agent", "Clash Verge/2.0 MihomoWebManager/0.1")
+	client := &http.Client{Timeout: timeout, Transport: transport}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err != nil {
+		resp.Body.Close()
+		return nil, nil, err
+	}
+	if resp.StatusCode >= 400 {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("subscription returned %s", resp.Status)
+	}
+	return data, resp, nil
+}
+
+func (s *Server) mihomoProxyAddr() string {
+	root, err := s.readConfigYAML()
+	if err != nil {
+		return ""
+	}
+	portNode := mappingValue(root, "mixed-port")
+	if portNode == nil {
+		portNode = mappingValue(root, "port")
+	}
+	if portNode == nil {
+		return ""
+	}
+	host := "127.0.0.1"
+	if bindNode := mappingValue(root, "bind-address"); bindNode != nil {
+		if bindNode.Value != "" && bindNode.Value != "*" && bindNode.Value != "0.0.0.0" {
+			host = bindNode.Value
+		}
+	}
+	return host + ":" + portNode.Value
 }
 
 func (s *Server) loadSubscriptions() ([]Subscription, error) {
@@ -451,9 +576,66 @@ func (s *Server) removeProviderFromConfig(item Subscription) error {
 	if err != nil {
 		return err
 	}
+	providerName := item.ProviderName
+	if providerName == "" {
+		providerName = strings.TrimPrefix(item.ID, "config_")
+	}
+
+	var otherProviders []string
 	providers := mappingValue(root, "proxy-providers")
 	if providers != nil && providers.Kind == yaml.MappingNode {
-		removeMappingKey(providers, item.ProviderName)
+		for i := 0; i+1 < len(providers.Content); i += 2 {
+			name := providers.Content[i].Value
+			if name != providerName {
+				otherProviders = append(otherProviders, name)
+			}
+		}
+	}
+
+	groups := mappingValue(root, "proxy-groups")
+	if groups != nil && groups.Kind == yaml.SequenceNode {
+		newGroups := make([]*yaml.Node, 0, len(groups.Content))
+		for _, groupDef := range groups.Content {
+			if groupDef.Kind != yaml.MappingNode {
+				newGroups = append(newGroups, groupDef)
+				continue
+			}
+			proxies := mappingValue(groupDef, "proxies")
+			if proxies != nil && proxies.Kind == yaml.SequenceNode {
+				newProxies := make([]*yaml.Node, 0, len(proxies.Content))
+				for _, p := range proxies.Content {
+					if p.Value != providerName {
+						newProxies = append(newProxies, p)
+					}
+				}
+				proxies.Content = newProxies
+			}
+			use := mappingValue(groupDef, "use")
+			if use != nil && use.Kind == yaml.SequenceNode {
+				newUse := make([]*yaml.Node, 0, len(use.Content))
+				for _, u := range use.Content {
+					if u.Value != providerName {
+						newUse = append(newUse, u)
+					}
+				}
+				if len(newUse) == 0 && len(otherProviders) > 0 {
+					for _, op := range otherProviders {
+						newUse = append(newUse, scalar(op))
+					}
+				}
+				use.Content = newUse
+			}
+			hasProxies := proxies != nil && len(proxies.Content) > 0
+			hasUse := use != nil && len(use.Content) > 0
+			if hasProxies || hasUse {
+				newGroups = append(newGroups, groupDef)
+			}
+		}
+		groups.Content = newGroups
+	}
+
+	if providers != nil && providers.Kind == yaml.MappingNode {
+		removeMappingKey(providers, providerName)
 	}
 	return s.writeConfigYAML(root)
 }
