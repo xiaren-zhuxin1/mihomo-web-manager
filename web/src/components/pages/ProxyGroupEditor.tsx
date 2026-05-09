@@ -1,11 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Zap, Globe, Shield, ArrowRightLeft, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star, Wifi } from 'lucide-react';
+import { Zap, Globe, Shield, ArrowRightLeft, Tv, Gamepad2, Layers, CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, Settings, RotateCcw, Info, Star, Wifi, AlertCircle } from 'lucide-react';
 import { Panel, setPageGlobal } from '../ui';
 import { api } from '../../services/api';
 import type { ConfigProxyGroup, ConfigModel, Page } from '../../types';
 
 function g(name: string, type: string, proxies: string[], use: string[] = [], extra?: Record<string, string>): ConfigProxyGroup {
   return { name, type, proxies, use, ...extra };
+}
+
+function modeNeedsProvider(groups: ConfigProxyGroup[]): boolean {
+  return groups.some(g => 
+    (g.type === 'url-test' || g.type === 'fallback' || g.type === 'load-balance') && 
+    g.use && g.use.includes('all')
+  );
 }
 
 const MODES: Array<{
@@ -294,6 +301,20 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
         <p className="textMuted" style={{ margin: '4px 0 0', fontSize: '13px' }}>选择一套方案，一键应用到你的代理。应用后会替换当前所有策略组。不懂就选带 ⭐ 的推荐。</p>
       </div>
 
+      {providers.length === 0 && (
+        <div className="notice warning" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+          <AlertCircle size={18} style={{ color: 'var(--warning)', flexShrink: 0, marginTop: '1px' }} />
+          <div>
+            <strong style={{ color: 'var(--warning)' }}>当前没有可用的订阅/节点资源</strong>
+            <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
+              部分模式依赖节点池才能正常工作。请先
+              <button className="linkBtn" onClick={() => setPageGlobal('subscriptions' as Page)} style={{ margin: '0 2px' }}>添加订阅</button>
+              或导入节点，再应用策略组模式。
+            </p>
+          </div>
+        </div>
+      )}
+
       {message && (
         <div className="notice" style={{ display: 'flex', alignItems: 'center', gap: '8px', animation: 'fadeIn 0.3s ease' }}>
           <CheckCircle2 size={16} />{message}
@@ -304,14 +325,18 @@ export function ProxyGroupEditor({ setBusy }: { setBusy: (busy: boolean) => void
       <div className="modesGrid">
         {MODES.map((mode) => {
           const isApplying = applyingMode === mode.key;
+          const needsProvider = modeNeedsProvider(mode.groups);
+          const isDisabled = !!applyingMode || (needsProvider && providers.length === 0);
           return (
             <button
               key={mode.key}
-              className={`modeCard${isApplying ? ' applying' : ''}`}
-              onClick={() => applyMode(mode.key)}
-              disabled={!!applyingMode}
+              className={`modeCard${isApplying ? ' applying' : ''}${isDisabled && !applyingMode ? ' disabled' : ''}`}
+              onClick={() => !isDisabled && applyMode(mode.key)}
+              disabled={isDisabled}
+              title={needsProvider && providers.length === 0 ? '该模式需要先添加订阅/节点资源' : undefined}
             >
               {mode.recommended && <span className="modeCardBadge"><Star size={12} />推荐</span>}
+              {needsProvider && providers.length === 0 && <span className="modeCardBadge" style={{ background: 'var(--warning)', right: mode.recommended ? '70px' : '10px' }}><AlertCircle size={12} />需订阅</span>}
               <div className="modeCardIcon">{mode.icon}</div>
               <div className="modeCardBody">
                 <strong>{mode.title}</strong>

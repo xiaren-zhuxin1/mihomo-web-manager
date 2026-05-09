@@ -29,6 +29,7 @@
   --accent-warning-bg: #fffbeb;
   --accent-error: #b42318;
   --accent-error-bg: #fff7f6;
+  --warning: #f59e0b;
   
   --sidebar-bg: linear-gradient(180deg, #101828, #18263a 62%, #112033);
   --sidebar-text: #edf4ff;
@@ -1294,6 +1295,12 @@ h1 {
   border-color: var(--accent-error);
   background: var(--accent-error-bg);
   color: var(--accent-error);
+}
+
+.notice.warning {
+  border-color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-primary);
 }
 
 .message {
@@ -3849,6 +3856,18 @@ textarea:focus {
 .modeCard:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.modeCard.disabled {
+  opacity: 0.5;
+  filter: grayscale(30%);
+  border-color: var(--border-light);
+}
+
+.modeCard.disabled:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border-light);
 }
 
 .modeCard.applying {
