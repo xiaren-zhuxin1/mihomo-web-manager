@@ -179,6 +179,7 @@ function SubscriptionCard({
   }, [item.name, item.url]);
   const canEdit = item.managed;
   const canDelete = true;
+  const canRefresh = item.exists && item.url && item.url.trim() !== '';
   const status = item.error ? '失败' : item.lastStatus === 'updated' ? '已更新' : validDate(item.updatedAt) ? '已更新' : '未刷新';
   return (
     <div className={item.exists ? 'subscriptionCard' : 'subscriptionCard warning'}>
@@ -193,7 +194,7 @@ function SubscriptionCard({
               <FileCode2 size={16} />
             </button>
           )}
-          <button className="iconButton" title="刷新订阅" onClick={() => onUpdate(item.id)} disabled={!item.exists}>
+          <button className="iconButton" title={canRefresh ? "刷新订阅" : "请先填入订阅链接"} onClick={() => onUpdate(item.id)} disabled={!canRefresh}>
             <RefreshCw size={16} />
           </button>
           {onDelete && canDelete && (
@@ -216,6 +217,7 @@ function SubscriptionCard({
         <p className="subUrl">{item.url || item.path || 'mihomo provider'}</p>
       )}
       {!item.exists && <p className="inlineError">配置引用的 provider 文件不存在，无法刷新。</p>}
+      {item.managed && (!item.url || item.url.trim() === '') && <p className="inlineError">订阅链接为空，请点击编辑按钮填入订阅链接。</p>}
       <div className="subscriptionStats">
         <Metric label="节点数" value={String(item.nodeCount || 0)} />
         <Metric label="状态" value={status} />
