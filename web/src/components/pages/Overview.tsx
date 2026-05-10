@@ -21,21 +21,27 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
     delay: string;
     delayClass: string;
     healthy: string;
+    fallbackChain?: string[];
   }>>([]);
   const [selectedGroup, setSelectedGroup] = useState(() => localStorage.getItem(PROXY_GROUP_KEY) || '');
   const [error, setError] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignMsg, setAssignMsg] = useState('');
+  const [assignWarnings, setAssignWarnings] = useState<string[]>([]);
   const { geoCache } = useGeoCache();
 
   const handleAutoAssign = async () => {
     setAssigning(true);
     setAssignMsg('');
+    setAssignWarnings([]);
     try {
       const res = await fetch('/api/proxy/geo/auto-assign', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Failed');
       setAssignMsg(data.message || '完成');
+      if (data.warnings && data.warnings.length > 0) {
+        setAssignWarnings(data.warnings);
+      }
       setTimeout(() => loadCurrentProxy(), 1000);
     } catch (e: any) {
       setAssignMsg(e.message || '失败');
@@ -50,12 +56,14 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
       const groups = Object.values(data.proxies || {}).filter((proxy) => Array.isArray(proxy.all) && proxy.all.length > 0);
       const result = groups.map((group) => {
         const isLoadBalance = (group.type || '').toLowerCase() === 'loadbalance';
+        const isFallback = (group.type || '').toLowerCase() === 'fallback';
         let displayNode: string;
         let displayDelay: string;
         let delayCls: string;
         let healthStr: string;
         let nodeType: string;
         let provider: string;
+        let fallbackChain: string[] | undefined;
 
         if (isLoadBalance) {
           const allNodes = group.all || [];
@@ -91,6 +99,13 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
           healthStr = finalNodeInfo?.alive === false ? '异常' : finalNodeInfo?.alive === true ? '正常' : '未知';
           nodeType = finalNodeInfo?.type || group.type || '-';
           provider = finalNodeInfo?.providerName || finalNodeInfo?.['provider-name'] || '-';
+          
+          if (isFallback && group.all && group.all.length > 1 && group.now) {
+            const nowIndex = group.all.indexOf(group.now);
+            if (nowIndex >= 0) {
+              fallbackChain = group.all.slice(0, nowIndex + 1);
+            }
+          }
         }
 
         return {
@@ -100,7 +115,8 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
           provider,
           delay: displayDelay,
           delayClass: delayCls,
-          healthy: healthStr
+          healthy: healthStr,
+          fallbackChain
         };
       });
       setActiveGroups(result);
@@ -141,12 +157,20 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
       </div>
       <Panel title={`策略组当前节点 (${activeGroups.length})`} icon={<Zap size={18} />}>
         {error && <p className="inlineError">{error}</p>}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn" onClick={handleAutoAssign} disabled={assigning}>
             {assigning ? '分配中...' : '按地区自动分配节点'}
           </button>
-          {assignMsg && <span className={assignMsg.includes('失败') ? 'inlineError' : ''}>{assignMsg}</span>}
+          {assignMsg && <span className={assignMsg.includes('失败') || assignMsg.includes('缺少') ? 'inlineError' : ''}>{assignMsg}</span>}
         </div>
+        {assignWarnings.length > 0 && (
+          <div className="inlineWarning" style={{ marginBottom: '12px' }}>
+            <strong>缺少节点的地区：</strong>
+            <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+              {assignWarnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
         <div className="activeGroupGrid">
           {activeGroups.map((item) => (
             <div
@@ -170,6 +194,16 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
                 {item.provider !== '-' && <span>{item.provider}</span>}
                 {geoCache[item.node] && <span className="badge region">{geoCache[item.node].country}{geoCache[item.node].city ? ` ${geoCache[item.node].city}` : ''}</span>}
               </div>
+              {item.fallbackChain && item.fallbackChain.length > 1 && (
+                <div className="fallbackChain">
+                  {item.fallbackChain.map((name, idx) => (
+                    <React.Fragment key={idx}>
+                      <span className={idx === item.fallbackChain!.length - 1 ? 'active' : 'inactive'}>{name}</span>
+                      {idx < item.fallbackChain!.length - 1 && <span className="arrow">→</span>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           {activeGroups.length === 0 && <p className="empty">暂无策略组</p>}

@@ -1,5 +1,5 @@
 param(
-    [string]$Host = "10.1.1.66",
+    [string]$ServerHost = "10.1.1.66",
     [string]$User = "eric",
     [string]$Password = ""
 )
@@ -10,7 +10,7 @@ $RemoteBase = "/opt/mihomo-web-manager"
 $MihomoConfigDir = "/etc/mihomo"
 
 Write-Host "=== Mihomo Web Manager Deploy ===" -ForegroundColor Cyan
-Write-Host "Target: ${User}@${Host}"
+Write-Host "Target: ${User}@${ServerHost}"
 
 # ── 1. Build ──────────────────────────────────────────
 Write-Host ""
@@ -35,7 +35,7 @@ function SshExec($cmd) {
 import paramiko, sys
 c = paramiko.SSHClient()
 c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-c.connect('$Host', username='$User', password='$Password', timeout=15)
+c.connect('$ServerHost', username='$User', password='$Password', timeout=15)
 stdin, stdout, stderr = c.exec_command("echo '$Password' | sudo -S bash -c '$cmd'", timeout=60)
 out = stdout.read().decode('utf-8', errors='replace').strip()
 err = stderr.read().decode('utf-8', errors='replace').strip()
@@ -150,7 +150,7 @@ $result = SshExec "curl -sf http://127.0.0.1:18080/api/health"
 
 if ($result -match '"ok":true') {
     Write-Host "  Deploy successful!" -ForegroundColor Green
-    Write-Host "  WebUI: http://${Host}:18080"
+    Write-Host "  WebUI: http://${ServerHost}:18080"
     Write-Host "  Health: $result"
 } else {
     Write-Host "  Deploy FAILED!" -ForegroundColor Red

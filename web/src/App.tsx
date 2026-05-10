@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   Activity,
   BookOpen,
@@ -34,7 +34,7 @@ import {
   ProxyGroupEditor
 } from './components/pages';
 
-const FRONTEND_VERSION = 'v1.0.32';
+const FRONTEND_VERSION = 'v1.0.42';
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');

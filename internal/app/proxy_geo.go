@@ -184,6 +184,24 @@ func (s *Server) handleGeoCache(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func normalizeCountryCode(country string) string {
+	countryMap := map[string]string{
+		"JP": "JP", "JAPAN": "JP",
+		"HK": "HK", "HONG KONG": "HK", "HONGKONG": "HK",
+		"SG": "SG", "SINGAPORE": "SG",
+		"US": "US", "UNITED STATES": "US", "USA": "US",
+		"TW": "TW", "TAIWAN": "TW",
+		"KR": "KR", "KOREA": "KR", "SOUTH KOREA": "KR",
+		"GB": "GB", "UNITED KINGDOM": "GB", "UK": "GB",
+		"DE": "DE", "GERMANY": "DE",
+	}
+	upper := strings.ToUpper(strings.TrimSpace(country))
+	if code, ok := countryMap[upper]; ok {
+		return code
+	}
+	return upper
+}
+
 func (s *Server) handleAutoAssignGroups(w http.ResponseWriter, r *http.Request) {
 	byCountry := make(map[string][]string)
 	s.geoCache.Range(func(key, value any) bool {
@@ -196,7 +214,7 @@ func (s *Server) handleAutoAssignGroups(w http.ResponseWriter, r *http.Request) 
 			return true
 		}
 		name := strings.TrimPrefix(keyStr, "name:")
-		country := entry.info.Country
+		country := normalizeCountryCode(entry.info.Country)
 		if country != "" {
 			byCountry[country] = append(byCountry[country], name)
 		}
@@ -209,10 +227,10 @@ func (s *Server) handleAutoAssignGroups(w http.ResponseWriter, r *http.Request) 
 	}
 
 	countryToGroup := map[string]string{
-		"JP":         "AUTO-JP",
-		"HK":         "AUTO-HK",
-		"SG":         "AUTO-SG",
-		"US":         "AUTO-US",
+		"JP": "AUTO-JP",
+		"HK": "AUTO-HK",
+		"SG": "AUTO-SG",
+		"US": "AUTO-US",
 	}
 
 	root, err := s.readConfigYAML()
@@ -229,25 +247,34 @@ func (s *Server) handleAutoAssignGroups(w http.ResponseWriter, r *http.Request) 
 
 	modified := false
 	groupUpdates := make(map[string][]string)
+	var warnings []string
+	nodesByCountry := make(map[string]int)
+	for c, nodes := range byCountry {
+		nodesByCountry[c] = len(nodes)
+	}
 
-	for country, groupNames := range byCountry {
-		groupName, exists := countryToGroup[country]
-		if !exists {
-			continue
-		}
-
+	for country, groupName := range countryToGroup {
+		nodes, hasNodes := byCountry[country]
+		
 		for _, groupNode := range proxyGroups.Content {
 			nodeName := childScalar(groupNode, "name")
 			if nodeName != groupName {
 				continue
 			}
 
-			hasFilterField := false
+			var newFilter string
+			if !hasNodes || len(nodes) == 0 {
+				newFilter = "^(NO-NODES-AVAILABLE-FOR-THIS-REGION)$"
+				warnings = append(warnings, fmt.Sprintf("AUTO-%s: 订阅中没有 %s 节点", country, country))
+			} else {
+				newFilter = fmt.Sprintf("^(%s)$", strings.Join(nodes, "|"))
+				groupUpdates[groupName] = nodes
+			}
 
+			hasFilterField := false
 			for j, content := range groupNode.Content {
 				if content.Kind == yaml.ScalarNode && content.Value == "filter" && j+1 < len(groupNode.Content) {
 					filterVal := groupNode.Content[j+1].Value
-					newFilter := fmt.Sprintf("^(%s)$", strings.Join(groupNames, "|"))
 					if filterVal != newFilter {
 						groupNode.Content[j+1].Value = newFilter
 						groupNode.Content[j+1].HeadComment = ""
@@ -259,50 +286,59 @@ func (s *Server) handleAutoAssignGroups(w http.ResponseWriter, r *http.Request) 
 			}
 
 			if !hasFilterField {
-				newFilter := fmt.Sprintf("^(%s)$", strings.Join(groupNames, "|"))
 				filterKey := &yaml.Node{Kind: yaml.ScalarNode, Value: "filter"}
 				filterVal := &yaml.Node{Kind: yaml.ScalarNode, Value: newFilter}
 				groupNode.Content = append(groupNode.Content, filterKey, filterVal)
 				modified = true
 			}
 
-			groupUpdates[groupName] = groupNames
 			break
 		}
 	}
 
-	if !modified {
+	if !modified && len(warnings) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"modified": false,
-			"message":  "groups already configured correctly or no matching countries found",
-			"updates":  groupUpdates,
+			"modified":       false,
+			"message":        "groups already configured correctly",
+			"updates":        groupUpdates,
+			"nodesByCountry": nodesByCountry,
+			"warnings":       warnings,
 		})
 		return
 	}
 
-	configPath := s.cfg.MihomoConfigPath
-	out, err := yaml.Marshal(root)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to marshal config: %v", err))
-		return
+	if modified {
+		configPath := s.cfg.MihomoConfigPath
+		out, err := yaml.Marshal(root)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to marshal config: %v", err))
+			return
+		}
+
+		if err := os.WriteFile(configPath, out, 0644); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to write config: %v", err))
+			return
+		}
+
+		reloadStatus, _, err := s.forwardMihomo("PUT", "/configs?force=true", strings.NewReader(`{}`))
+		if err != nil || reloadStatus != 204 {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("config saved but mihomo reload failed (status %d): %v", reloadStatus, err))
+			return
+		}
 	}
 
-	if err := os.WriteFile(configPath, out, 0644); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to write config: %v", err))
-		return
-	}
-
-	reloadStatus, _, err := s.forwardMihomo("PUT", "/configs?force=true", strings.NewReader(`{}`))
-	if err != nil || reloadStatus != 204 {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("config saved but mihomo reload failed (status %d): %v", reloadStatus, err))
-		return
+	message := "策略组已按地区分配"
+	if len(warnings) > 0 {
+		message = fmt.Sprintf("已分配 %d 个地区，%d 个地区缺少节点", len(groupUpdates), len(warnings))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"modified": true,
-		"message":  "strategy groups updated based on geo data",
-		"updates":  groupUpdates,
-		"reload":   "success",
+		"modified":       modified,
+		"message":        message,
+		"updates":        groupUpdates,
+		"nodesByCountry": nodesByCountry,
+		"warnings":       warnings,
+		"reload":         "success",
 	})
 }
 
@@ -603,7 +639,7 @@ func (s *Server) handleBatchProxyGeo(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			geoResult.Country = geoInfo.Country
+			geoResult.Country = normalizeCountryCode(geoInfo.Country)
 			geoResult.Region = geoInfo.Region
 			geoResult.City = geoInfo.City
 			geoResult.IP = geoInfo.IP
@@ -612,8 +648,8 @@ func (s *Server) handleBatchProxyGeo(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
 			result.Success++
 			result.Results = append(result.Results, geoResult)
-			if geoInfo.Country != "" {
-				result.ByCountry[geoInfo.Country]++
+			if geoResult.Country != "" {
+				result.ByCountry[geoResult.Country]++
 			}
 			mu.Unlock()
 		}(name)
@@ -683,7 +719,7 @@ func (s *Server) handleGeoDiagnostics(w http.ResponseWriter, r *http.Request) {
 
 			if geoInfo.Country != "" {
 				mu.Lock()
-				byCountry[geoInfo.Country] = append(byCountry[geoInfo.Country], proxyName)
+				byCountry[normalizeCountryCode(geoInfo.Country)] = append(byCountry[normalizeCountryCode(geoInfo.Country)], proxyName)
 				mu.Unlock()
 			}
 		}(name)

@@ -3,10 +3,10 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $WebDir = Join-Path $ProjectRoot "web"
 $DistDir = Join-Path $WebDir "dist"
-$RemoteHost = "192.168.231.66"
-$RemoteUser = "ai"
+$RemoteHost = "10.1.1.66"
+$RemoteUser = "eric"
 $RemotePass = "123456"
-$RemotePath = "/home/ai/mihomo-webui"
+$RemotePath = "/home/eric/mihomo-webui"
 
 Write-Host "=== Mihomo Web Manager Deploy Script ===" -ForegroundColor Cyan
 
@@ -57,13 +57,28 @@ $secPassword = ConvertTo-SecureString $RemotePass -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($RemoteUser, $secPassword)
 
 $session = New-SSHSession -ComputerName $RemoteHost -Credential $cred -AcceptKey
-Invoke-SSHCommand -SessionId $session.SessionId -Command "rm -rf $RemotePath/web/dist/*" | Out-Null
+Invoke-SSHCommand -SessionId $session.SessionId -Command "mkdir -p $RemotePath/web/dist $RemotePath/internal/app && rm -rf $RemotePath/internal/*" | Out-Null
 Remove-SSHSession -SessionId $session.SessionId | Out-Null
 
 $sftp = New-SFTPSession -ComputerName $RemoteHost -Credential $cred -AcceptKey
 Set-SFTPItem -SessionId $sftp.SessionId -Path "$DistDir\*" -Destination "$RemotePath/web/dist/" -Force
 Set-SFTPItem -SessionId $sftp.SessionId -Path "$DistDir\index.html" -Destination "$RemotePath/web/dist/" -Force
-Set-SFTPItem -SessionId $sftp.SessionId -Path "$ProjectRoot\internal\app\version.go" -Destination "$RemotePath/internal/app/" -Force
+Set-SFTPItem -SessionId $sftp.SessionId -Path "$ProjectRoot\go.mod" -Destination "$RemotePath/" -Force
+Set-SFTPItem -SessionId $sftp.SessionId -Path "$ProjectRoot\go.sum" -Destination "$RemotePath/" -Force
+Set-SFTPItem -SessionId $sftp.SessionId -Path "$ProjectRoot\main.go" -Destination "$RemotePath/" -Force
+
+$internalFiles = Get-ChildItem -Path "$ProjectRoot\internal" -Recurse -File
+foreach ($file in $internalFiles) {
+    $relativePath = $file.FullName.Substring($ProjectRoot.Length).Replace('\', '/')
+    $remoteDest = "$RemotePath$relativePath"
+    $remoteDir = $remoteDest.Substring(0, $remoteDest.LastIndexOf('/'))
+    $dirSession = New-SSHSession -ComputerName $RemoteHost -Credential $cred -AcceptKey
+    Invoke-SSHCommand -SessionId $dirSession.SessionId -Command "mkdir -p $remoteDir" | Out-Null
+    Remove-SSHSession -SessionId $dirSession.SessionId | Out-Null
+    $sftpUpload = New-SFTPSession -ComputerName $RemoteHost -Credential $cred -AcceptKey
+    Set-SFTPItem -SessionId $sftpUpload.SessionId -Path $file.FullName -Destination $remoteDir -Force
+    Remove-SFTPSession -SessionId $sftpUpload.SessionId | Out-Null
+}
 Remove-SFTPSession -SessionId $sftp.SessionId | Out-Null
 Write-Host "Files uploaded" -ForegroundColor Green
 
@@ -78,7 +93,7 @@ Write-Host "Backend build completed" -ForegroundColor Green
 
 Write-Host "`n[4/5] Restarting service..." -ForegroundColor Cyan
 Invoke-SSHCommand -SessionId $session.SessionId -Command "pkill -f mihomo-web-manager 2>/dev/null; sleep 1" | Out-Null
-Invoke-SSHCommand -SessionId $session.SessionId -Command "cd $RemotePath && MIHOMO_CONTROLLER='127.0.0.1:9090' MIHOMO_SECRET='mihomo123' MIHOMO_CONFIG='/home/ai/mihomo/config/config.yaml' WEB_DIR='$RemotePath/web/dist' MWM_LISTEN='0.0.0.0:8081' nohup ./mihomo-web-manager >> app.log 2>&1 &" -TimeOut 5 | Out-Null
+Invoke-SSHCommand -SessionId $session.SessionId -Command "cd $RemotePath && MIHOMO_CONTROLLER='127.0.0.1:9090' MIHOMO_SECRET='mihomo123' MIHOMO_CONFIG='/home/eric/mihomo/config/config.yaml' WEB_DIR='$RemotePath/web/dist' MWM_LISTEN='0.0.0.0:8081' nohup ./mihomo-web-manager >> app.log 2>&1 &" -TimeOut 5 | Out-Null
 Start-Sleep -Seconds 2
 Write-Host "Service restarted" -ForegroundColor Green
 
