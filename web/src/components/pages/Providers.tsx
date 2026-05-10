@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Activity, Gauge, ListTree, RefreshCw, RotateCcw } from 'lucide-react';
+import { Activity, Gauge, Globe, ListTree, RefreshCw, RotateCcw } from 'lucide-react';
 import { Panel, Metric, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { formatDelay, delayClass, latestDelay, readError, isDelayTestable, formatDate, validDate } from '../../utils/helpers';
+import { useGeoCache } from '../../hooks/useGeoCache';
 import type { ProxyNode, Provider } from '../../types';
 
 export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
@@ -11,6 +12,8 @@ export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'delay' | 'name'>('delay');
   const [error, setError] = useState('');
+  const [testingGeo, setTestingGeo] = useState(false);
+  const { geoCache, loadGeoForNodes, getGeoStatus, loadAllCache } = useGeoCache();
 
   const load = async () => {
     setBusy(true);
@@ -104,6 +107,17 @@ export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
+  const testAllGeo = async () => {
+    if (!provider || testingGeo) return;
+    setTestingGeo(true);
+    try {
+      const nodeNames = (provider.proxies || []).map((n) => n.name);
+      await loadGeoForNodes(nodeNames, 3);
+    } finally {
+      setTestingGeo(false);
+    }
+  };
+
   const provider = providers.find((item) => item.name === selectedProvider);
   const query = filter.trim().toLowerCase();
   const nodes = useMemo(() => {
@@ -113,6 +127,13 @@ export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
     });
     return [...list].sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : latestDelay(a) - latestDelay(b)));
   }, [filter, provider, sort]);
+
+  const geoStats = useMemo(() => {
+    if (!provider) return { cached: 0, total: 0 };
+    const total = (provider.proxies || []).length;
+    const cached = (provider.proxies || []).filter((n) => geoCache[n.name]).length;
+    return { cached, total };
+  }, [provider, geoCache]);
 
   return (
     <div className="split">
@@ -138,6 +159,7 @@ export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
               <Metric label="类型" value={provider.vehicleType || provider.type || '-'} />
               <Metric label="测试地址" value={provider.testUrl || '-'} />
               <Metric label="更新时间" value={validDate(provider.updatedAt) ? formatDate(provider.updatedAt!) : '未更新'} />
+              <Metric label="地区已测" value={`${geoStats.cached}/${geoStats.total}`} />
             </div>
             <div className="toolbar">
               <input className="searchInput" placeholder="筛选节点、类型、资源" value={filter} onChange={(event) => setFilter(event.target.value)} />
@@ -145,28 +167,43 @@ export function Providers({ setBusy }: { setBusy: (busy: boolean) => void }) {
               <button className={sort === 'name' ? 'activeMode' : ''} onClick={() => setSort('name')}>名称</button>
               <button onClick={() => healthCheckProvider(provider.name)}>
                 <Gauge size={16} />
-                资源测速
+                测速
+              </button>
+              <button onClick={testAllGeo} disabled={testingGeo}>
+                <Globe size={16} />
+                {testingGeo ? '检测中...' : '测地区'}
               </button>
             </div>
             <div className="providerNodeGrid">
-              {nodes.map((node) => (
-                <div className="providerNodeCard" key={`${provider.name}-${node.name}`}>
-                  <div className="nodeMainText">
-                    <strong>{node.name}</strong>
-                    <span>{node.providerName || node['provider-name'] || provider.name}</span>
+              {nodes.map((node) => {
+                const geoStatus = getGeoStatus(node.name);
+                return (
+                  <div className="providerNodeCard" key={`${provider.name}-${node.name}`}>
+                    <div className="nodeMainText">
+                      <strong>{node.name}</strong>
+                      <span>{node.providerName || node['provider-name'] || provider.name}</span>
+                    </div>
+                    <div className="badgeRow">
+                      <span className="badge">{node.type || 'Unknown'}</span>
+                      {node.udp && <span className="badge">UDP</span>}
+                      {geoStatus.status === 'cached' && geoStatus.info && (
+                        <span className="badge region" title={`IP: ${geoStatus.info.ip} | 来源: ${geoStatus.info.source}`}>
+                          {geoStatus.info.country}{geoStatus.info.city ? ` ${geoStatus.info.city}` : ''}
+                        </span>
+                      )}
+                      {geoStatus.status === 'testing' && <span className="badge testing">检测中</span>}
+                      {geoStatus.status === 'failed' && <span className="badge failed">检测失败</span>}
+                      {geoStatus.status === 'not_tested' && <span className="badge not_tested">未检测</span>}
+                      <span className={node.alive === false ? 'statusPill bad' : node.alive === true ? 'statusPill good' : 'statusPill'}>{node.alive === false ? '异常' : node.alive === true ? '正常' : '未知'}</span>
+                      <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
+                    </div>
+                    <button className="testButton" onClick={() => testProxy(node.name)} disabled={!isDelayTestable(node)}>
+                      <Gauge size={15} />
+                      测速
+                    </button>
                   </div>
-                  <div className="badgeRow">
-                    <span className="badge">{node.type || 'Unknown'}</span>
-                    {node.udp && <span className="badge">UDP</span>}
-                    <span className={node.alive === false ? 'statusPill bad' : node.alive === true ? 'statusPill good' : 'statusPill'}>{node.alive === false ? '异常' : node.alive === true ? '正常' : '未知'}</span>
-                    <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
-                  </div>
-                  <button className="testButton" onClick={() => testProxy(node.name)} disabled={!isDelayTestable(node)}>
-                    <Gauge size={15} />
-                    测速
-                  </button>
-                </div>
-              ))}
+                );
+              })}
               {nodes.length === 0 && <p className="empty">没有匹配的节点</p>}
             </div>
           </>

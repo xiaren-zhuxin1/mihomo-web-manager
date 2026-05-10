@@ -22,9 +22,10 @@ type geoCacheEntry struct {
 }
 
 type Server struct {
-	cfg      Config
-	geoCache sync.Map
-	geoMu    sync.Mutex
+	cfg           Config
+	geoCache      sync.Map
+	geoMu         sync.Mutex
+	geoCachePath  string
 }
 
 var mihomoHTTPClient = &http.Client{
@@ -32,7 +33,62 @@ var mihomoHTTPClient = &http.Client{
 }
 
 func NewServer(cfg Config) *Server {
-	return &Server{cfg: cfg}
+	s := &Server{cfg: cfg}
+	s.geoCachePath = filepath.Join(filepath.Dir(cfg.MihomoConfigPath), "geo-cache.json")
+	s.loadGeoCache()
+	return s
+}
+
+func (s *Server) loadGeoCache() {
+	data, err := os.ReadFile(s.geoCachePath)
+	if err != nil {
+		return
+	}
+	var entries map[string]struct {
+		Info      *GeoInfo `json:"info"`
+		ExpiresAt string   `json:"expiresAt"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return
+	}
+	for name, entry := range entries {
+		expiresAt, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+		if err != nil || time.Now().After(expiresAt) {
+			continue
+		}
+		s.geoCache.Store(name, &geoCacheEntry{
+			info:      entry.Info,
+			expiresAt: expiresAt,
+		})
+	}
+}
+
+func (s *Server) saveGeoCache() {
+	s.geoMu.Lock()
+	defer s.geoMu.Unlock()
+
+	entries := make(map[string]struct {
+		Info      *GeoInfo `json:"info"`
+		ExpiresAt string   `json:"expiresAt"`
+	})
+	s.geoCache.Range(func(key, value any) bool {
+		if entry, ok := value.(*geoCacheEntry); ok && time.Now().Before(entry.expiresAt) {
+			entries[key.(string)] = struct {
+				Info      *GeoInfo `json:"info"`
+				ExpiresAt string   `json:"expiresAt"`
+			}{
+				Info:      entry.info,
+				ExpiresAt: entry.expiresAt.Format(time.RFC3339),
+			}
+		}
+		return true
+	})
+
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(s.geoCachePath, data, 0644)
 }
 
 func (s *Server) Routes() http.Handler {
@@ -69,6 +125,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.auth(s.handleDeleteSubscription))
 	mux.HandleFunc("GET /api/service/status", s.auth(s.handleServiceStatus))
 	mux.HandleFunc("POST /api/service/{action}", s.auth(s.handleServiceAction))
+	mux.HandleFunc("GET /api/proxy/geo/cache", s.auth(s.handleGeoCache))
+	mux.HandleFunc("GET /api/proxy/geo/batch", s.auth(s.handleBatchProxyGeo))
+	mux.HandleFunc("GET /api/proxy/geo/diagnostics", s.auth(s.handleGeoDiagnostics))
+	mux.HandleFunc("POST /api/proxy/geo/auto-assign", s.auth(s.handleAutoAssignGroups))
 	mux.HandleFunc("GET /api/proxy/{name}/geo", s.auth(s.handleProxyGeo))
 	mux.HandleFunc("/api/mihomo/", s.auth(s.handleMihomoProxy))
 

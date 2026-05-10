@@ -7,6 +7,7 @@ import {
   defaultTunForm, tunFormFromDiagnostics, parseTunDnsHijack,
   sameTunForm, readTunReloadError, describeMode, describeLogLevel
 } from '../../utils/helpers';
+import { useGeoCache } from '../../hooks/useGeoCache';
 import type { Health, ProxyNode, RuntimeConfig, MihomoVersion, TunDiagnostics, TunForm } from '../../types';
 
 const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
@@ -23,6 +24,25 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
   }>>([]);
   const [selectedGroup, setSelectedGroup] = useState(() => localStorage.getItem(PROXY_GROUP_KEY) || '');
   const [error, setError] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignMsg, setAssignMsg] = useState('');
+  const { geoCache } = useGeoCache();
+
+  const handleAutoAssign = async () => {
+    setAssigning(true);
+    setAssignMsg('');
+    try {
+      const res = await fetch('/api/proxy/geo/auto-assign', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed');
+      setAssignMsg(data.message || '完成');
+      setTimeout(() => loadCurrentProxy(), 1000);
+    } catch (e: any) {
+      setAssignMsg(e.message || '失败');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const loadCurrentProxy = async () => {
     try {
@@ -121,6 +141,12 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
       </div>
       <Panel title={`策略组当前节点 (${activeGroups.length})`} icon={<Zap size={18} />}>
         {error && <p className="inlineError">{error}</p>}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+          <button className="btn" onClick={handleAutoAssign} disabled={assigning}>
+            {assigning ? '分配中...' : '按地区自动分配节点'}
+          </button>
+          {assignMsg && <span className={assignMsg.includes('失败') ? 'inlineError' : ''}>{assignMsg}</span>}
+        </div>
         <div className="activeGroupGrid">
           {activeGroups.map((item) => (
             <div
@@ -142,6 +168,7 @@ export function Overview({ health, onRefresh }: { health: Health | null; onRefre
               <div className="activeGroupMeta">
                 <span>{item.type}</span>
                 {item.provider !== '-' && <span>{item.provider}</span>}
+                {geoCache[item.node] && <span className="badge region">{geoCache[item.node].country}{geoCache[item.node].city ? ` ${geoCache[item.node].city}` : ''}</span>}
               </div>
             </div>
           ))}

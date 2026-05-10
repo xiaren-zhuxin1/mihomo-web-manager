@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Activity, Check, Gauge, RefreshCw, Zap } from 'lucide-react';
+import { Activity, Check, Gauge, Globe, RefreshCw, Zap } from 'lucide-react';
 import { Panel, Metric, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { formatDelay, delayClass, latestDelay, readError, isDelayTestable } from '../../utils/helpers';
+import { useGeoCache } from '../../hooks/useGeoCache';
 import type { ProxyGroup, ProxyNode } from '../../types';
 
 const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
@@ -14,7 +15,8 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'delay'>('delay');
   const [error, setError] = useState('');
-  const [geoCache, setGeoCache] = useState<Record<string, { country: string; city: string; region: string }>>({});
+  const [testingGeo, setTestingGeo] = useState(false);
+  const { geoCache, loadGeoForNodes, getGeoStatus } = useGeoCache();
 
   const load = async () => {
     setBusy(true);
@@ -47,24 +49,6 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   }, [selectedGroup]);
 
-  const loadGeoForNode = async (proxyName: string) => {
-    if (geoCache[proxyName]) return;
-    try {
-      const geoData = await api<{ country?: string; city?: string; region?: string }>(
-        `/api/proxy/${encodeURIComponent(proxyName)}/geo`
-      );
-      setGeoCache((current) => ({
-        ...current,
-        [proxyName]: {
-          country: geoData.country || '',
-          city: geoData.city || '',
-          region: geoData.region || ''
-        }
-      }));
-    } catch {
-    }
-  };
-
   const group = groups.find((item) => item.name === selectedGroup);
   const selectableGroup = group ? ['Selector', 'Compatible'].includes(group.type) : false;
   const autoGroup = group ? ['URLTest', 'Fallback', 'LoadBalance'].includes(group.type) : false;
@@ -79,11 +63,16 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     });
   }, [filter, group, proxyMap, sort]);
 
-  useEffect(() => {
-    if (!group || !nodes.length) return;
-    const nodesToLoad = nodes.filter(n => !geoCache[n.name] && isDelayTestable(n));
-    nodesToLoad.slice(0, 5).forEach(n => loadGeoForNode(n.name));
-  }, [selectedGroup, nodes]);
+  const testAllGeo = async () => {
+    if (!group || testingGeo) return;
+    setTestingGeo(true);
+    try {
+      const nodeNames = nodes.filter(n => isDelayTestable(n)).map(n => n.name);
+      await loadGeoForNodes(nodeNames, 3);
+    } finally {
+      setTestingGeo(false);
+    }
+  };
 
   const selectProxy = async (proxyName: string) => {
     if (!group) return;
@@ -160,6 +149,13 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
+  const geoStats = useMemo(() => {
+    const testableNodes = nodes.filter(n => isDelayTestable(n));
+    const total = testableNodes.length;
+    const cached = testableNodes.filter((n) => geoCache[n.name]).length;
+    return { cached, total };
+  }, [nodes, geoCache]);
+
   return (
     <div className="split">
       <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '规则命中 - 分流规则', page: 'rules' }} />
@@ -196,14 +192,22 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
             <Gauge size={16} />
             全组测速
           </button>
+          <button onClick={testAllGeo} disabled={testingGeo}>
+            <Globe size={16} />
+            {testingGeo ? '检测中...' : '测地区'}
+          </button>
           <button className="iconButton" title="刷新" onClick={load}>
             <RefreshCw size={16} />
           </button>
         </div>
+        {geoStats.total > 0 && (
+          <p className="inlineHint">地区已测: {geoStats.cached}/{geoStats.total}</p>
+        )}
         <div className="nodeCardGrid">
           {nodes.map((node) => {
             const isSelected = group?.now === node.name;
             const canSelect = selectableGroup;
+            const geoStatus = getGeoStatus(node.name);
             return (
               <div
                 key={node.name}
@@ -219,9 +223,14 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                   <span className="badge">{node.type || 'Unknown'}</span>
                   {node.udp && <span className="badge">UDP</span>}
                   {node.providerName && <span className="badge">{node.providerName}</span>}
-                  {(geoCache[node.name]?.country || geoCache[node.name]?.city) && (
-                    <span className="badge region">{geoCache[node.name]?.country || ''}{geoCache[node.name]?.city ? ` ${geoCache[node.name]?.city}` : ''}</span>
+                  {geoStatus.status === 'cached' && geoStatus.info && (
+                    <span className="badge region" title={`IP: ${geoStatus.info.ip} | 来源: ${geoStatus.info.source}`}>
+                      {geoStatus.info.country}{geoStatus.info.city ? ` ${geoStatus.info.city}` : ''}
+                    </span>
                   )}
+                  {geoStatus.status === 'testing' && <span className="badge testing">检测中</span>}
+                  {geoStatus.status === 'failed' && <span className="badge failed">检测失败</span>}
+                  {geoStatus.status === 'not_tested' && isDelayTestable(node) && <span className="badge not_tested">未检测</span>}
                   <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
                 </div>
                 <div className="nodeActions">

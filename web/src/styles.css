@@ -1494,6 +1494,30 @@ h1 {
   background: rgba(59, 130, 246, 0.08);
 }
 
+.badge.testing {
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #ca8a04;
+  background: rgba(234, 179, 8, 0.1);
+  animation: pulse 1.5s infinite;
+}
+
+.badge.failed {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--accent-error);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.badge.not_tested {
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.08);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .badge.selectable {
   border-color: rgba(16, 112, 68, 0.3);
   color: var(--accent-success);
