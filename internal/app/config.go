@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -30,6 +31,9 @@ func LoadConfig() Config {
 		WebDir:           env("MWM_WEB_DIR", "./web/dist"),
 		ServiceMode:      env("MWM_SERVICE_MODE", "systemd"),
 		ContainerName:    env("MIHOMO_CONTAINER", "mihomo"),
+	}
+	if realPath, err := filepath.EvalSymlinks(cfg.MihomoConfigPath); err == nil {
+		cfg.MihomoConfigPath = realPath
 	}
 	return cfg
 }

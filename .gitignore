@@ -52,6 +52,7 @@ delete_*.py
 run_tests.bat
 run_*.py
 deploy.config.md
+deploy.config.psd1
 /deploy.ps1
 /deploy.sh
 core_remote.py
