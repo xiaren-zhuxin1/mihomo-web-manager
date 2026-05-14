@@ -50,8 +50,8 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   }, [selectedGroup]);
 
   const group = groups.find((item) => item.name === selectedGroup);
-  const selectableGroup = group ? ['Selector', 'Compatible'].includes(group.type) : false;
-  const autoGroup = group ? ['URLTest', 'Fallback', 'LoadBalance'].includes(group.type) : false;
+  const selectableGroup = group ? ['Selector', 'Compatible', 'Fallback'].includes(group.type) : false;
+  const autoGroup = group ? ['URLTest', 'LoadBalance'].includes(group.type) : false;
   const nodes = useMemo(() => {
     const query = filter.trim().toLowerCase();
     const list = (group?.all || [])
@@ -162,13 +162,13 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       <Panel title={`策略组 (${groups.length})`} icon={<Zap size={18} />}>
         <div className="list">
           {groups.map((item) => {
-            const isSelectable = ['Selector', 'Compatible'].includes(item.type);
-            const isAuto = ['URLTest', 'Fallback', 'LoadBalance'].includes(item.type);
+            const isSelectable = ['Selector', 'Compatible', 'Fallback'].includes(item.type);
+            const isAuto = ['URLTest', 'LoadBalance'].includes(item.type);
             return (
               <button key={item.name} className={item.name === selectedGroup ? 'row active' : 'row'} onClick={() => setSelectedGroup(item.name)}>
                 <div className="groupName">
                   <span className="groupNameText">{item.name}</span>
-                  {isSelectable && <span className="badge selectable">手动</span>}
+                  {isSelectable && <span className="badge selectable">可切换</span>}
                   {isAuto && <span className="badge auto">自动</span>}
                 </div>
                 <div className="groupNow">
@@ -181,8 +181,8 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       </Panel>
       <Panel title={group ? `${group.name} · ${group.type} · ${group.all?.length || 0} 节点` : '节点'} icon={<Activity size={18} />}>
         {error && <p className="inlineError">{error}</p>}
-        {group && selectableGroup && <p className="inlineHint">点击节点卡片即可选用。当前策略组支持手动选择节点。</p>}
-        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核根据策略自动切换节点。仅 Selector/Compatible 类型支持手动选用。</p>}
+        {group && selectableGroup && <p className="inlineHint">点击节点卡片即可选用。当前策略组支持手动切换节点。</p>}
+        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核根据策略自动切换节点。如需手动选择，请切换到标记为"可切换"的策略组（如 GLOBAL、PROXY、HK 等）。</p>}
         {group && !selectableGroup && !autoGroup && <p className="inlineHint">当前策略组类型为 {group.type}，不支持手动选用节点。</p>}
         <div className="toolbar">
           <input className="searchInput" placeholder="筛选节点或类型" value={filter} onChange={(event) => setFilter(event.target.value)} />

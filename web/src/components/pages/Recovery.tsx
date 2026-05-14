@@ -26,6 +26,7 @@ type RecoveryStatus = {
 type NodeHealth = {
   name: string;
   group: string;
+  groupType: string;
   alive: boolean;
   delay: number;
   lastCheck: string;
@@ -59,10 +60,12 @@ export function Recovery() {
   const [subRecovery, setSubRecovery] = useState<SubRecoveryStatus | null>(null);
   const [nodeHealth, setNodeHealth] = useState<NodeHealth[]>([]);
   const [selectedGroup, setSelectedGroup] = useState('');
+  const [availableGroups, setAvailableGroups] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [expandedEvents, setExpandedEvents] = useState(false);
   const [expandedNodes, setExpandedNodes] = useState(false);
+  const [nodeFilter, setNodeFilter] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -83,7 +86,12 @@ export function Recovery() {
   const loadNodeHealth = useCallback(async () => {
     try {
       const data = await api<{ health: NodeHealth[] }>(`/api/nodes/health${selectedGroup ? `?group=${encodeURIComponent(selectedGroup)}` : ''}`);
-      setNodeHealth(data.health || []);
+      const health = data.health || [];
+      setNodeHealth(health);
+      if (!selectedGroup) {
+        const groups = [...new Set(health.map(h => h.group))].sort();
+        setAvailableGroups(groups);
+      }
     } catch {
       setNodeHealth([]);
     }
@@ -325,14 +333,25 @@ export function Recovery() {
         </div>
         {expandedNodes && (
           <div className="cardBody">
-            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="按策略组筛选..."
+            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
                 value={selectedGroup}
                 onChange={(e) => setSelectedGroup(e.target.value)}
                 className="input"
-                style={{ maxWidth: '300px' }}
+                style={{ maxWidth: '200px' }}
+              >
+                <option value="">全部策略组</option>
+                {availableGroups.map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="搜索节点名称..."
+                value={nodeFilter}
+                onChange={(e) => setNodeFilter(e.target.value)}
+                className="input"
+                style={{ maxWidth: '200px' }}
               />
               <button className="btn" onClick={loadNodeHealth}>
                 <RefreshCw size={14} />
@@ -346,6 +365,7 @@ export function Recovery() {
                   <thead>
                     <tr>
                       <th>策略组</th>
+                      <th>类型</th>
                       <th>节点</th>
                       <th>状态</th>
                       <th>延迟</th>
@@ -355,38 +375,50 @@ export function Recovery() {
                     </tr>
                   </thead>
                   <tbody>
-                    {nodeHealth.map((node, i) => (
-                      <tr key={i} className={node.skipAuto ? 'skipped' : node.alive ? 'alive' : 'dead'}>
-                        <td>{node.group}</td>
-                        <td>{node.name}</td>
-                        <td>
-                          {node.alive ? (
-                            <span className="text-green-400">存活</span>
-                          ) : (
-                            <span className="text-red-400">故障</span>
-                          )}
-                        </td>
-                        <td>{node.delay > 0 ? `${node.delay}ms` : '-'}</td>
-                        <td className={node.consecFails > 0 ? 'text-yellow-400' : ''}>{node.consecFails}</td>
-                        <td>
-                          {node.skipAuto ? (
-                            <span className="text-yellow-400" title={node.skipReason}>是</span>
-                          ) : '否'}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            {node.skipAuto && (
-                              <button className="btn sm" onClick={() => resetNodeSkip(node.group, node.name)}>
-                                重置
-                              </button>
+                    {nodeHealth
+                      .filter(n => !nodeFilter || n.name.toLowerCase().includes(nodeFilter.toLowerCase()))
+                      .map((node, i) => {
+                      const isAutoGroup = ['URLTest', 'LoadBalance'].includes(node.groupType);
+                      return (
+                        <tr key={i} className={node.skipAuto ? 'skipped' : node.alive ? 'alive' : 'dead'}>
+                          <td>{node.group}</td>
+                          <td>
+                            <span className={`badge ${isAutoGroup ? 'auto' : 'selectable'}`}>
+                              {node.groupType || '?'}
+                            </span>
+                          </td>
+                          <td>{node.name}</td>
+                          <td>
+                            {node.alive ? (
+                              <span className="text-green-400">存活</span>
+                            ) : (
+                              <span className="text-red-400">故障</span>
                             )}
-                            <button className="btn sm accent" onClick={() => autoSwitch(node.group)}>
-                              切换
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td>{node.delay > 0 ? `${node.delay}ms` : '-'}</td>
+                          <td className={node.consecFails > 0 ? 'text-yellow-400' : ''}>{node.consecFails}</td>
+                          <td>
+                            {node.skipAuto ? (
+                              <span className="text-yellow-400" title={node.skipReason}>是</span>
+                            ) : '否'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {node.skipAuto && (
+                                <button className="btn sm" onClick={() => resetNodeSkip(node.group, node.name)}>
+                                  重置
+                                </button>
+                              )}
+                              {!isAutoGroup && (
+                                <button className="btn sm accent" onClick={() => autoSwitch(node.group)}>
+                                  切换
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -410,6 +442,8 @@ export function Recovery() {
         .statusDot.alive { background: #22c55e; }
         .statusDot.dead { background: #ef4444; }
         .badge { background: var(--bg-hover); padding: 2px 8px; border-radius: 10px; font-size: 12px; color: var(--text-secondary); }
+        .badge.selectable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+        .badge.auto { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
         .eventList { max-height: 300px; overflow-y: auto; }
         .eventItem { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
         .eventItem:last-child { border-bottom: none; }

@@ -216,7 +216,7 @@ func (nf *NodeFailover) autoSwitchFailedGroups(proxies map[string]MihomoProxyEnt
 		}
 
 		switch proxy.Type {
-		case "URLTest", "Fallback", "LoadBalance":
+		case "URLTest", "LoadBalance":
 			continue
 		}
 
@@ -427,7 +427,7 @@ func (s *Server) handleNodeAutoSwitch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch proxy.Type {
-	case "URLTest", "Fallback", "LoadBalance":
+	case "URLTest", "LoadBalance":
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("cannot manually switch auto group type %q (%s)", proxy.Type, group))
 		return
 	}
