@@ -13,6 +13,7 @@ import (
 type NodeHealth struct {
 	Name         string    `json:"name"`
 	Group        string    `json:"group"`
+	GroupType    string    `json:"groupType"`
 	Alive        bool      `json:"alive"`
 	Delay        int       `json:"delay"`
 	LastCheck    time.Time `json:"lastCheck"`
@@ -103,21 +104,25 @@ func (nf *NodeFailover) checkAll() {
 		return
 	}
 
-	groups := make(map[string][]string)
+	type groupInfo struct {
+		nodes []string
+		gtype string
+	}
+	groups := make(map[string]groupInfo)
 	for name, proxy := range proxies {
 		if len(proxy.All) > 0 && !nf.isExcludedGroup(name) {
-			groups[name] = proxy.All
+			groups[name] = groupInfo{nodes: proxy.All, gtype: proxy.Type}
 		}
 	}
 
 	var wg sync.WaitGroup
-	for groupName, nodes := range groups {
-		for _, nodeName := range nodes {
+	for groupName, info := range groups {
+		for _, nodeName := range info.nodes {
 			wg.Add(1)
-			go func(g, n string) {
+			go func(g, n, gt string) {
 				defer wg.Done()
-				nf.checkNode(g, n)
-			}(groupName, nodeName)
+				nf.checkNode(g, n, gt)
+			}(groupName, nodeName, info.gtype)
 		}
 	}
 	wg.Wait()
@@ -136,7 +141,7 @@ func (nf *NodeFailover) isExcludedGroup(name string) bool {
 	return false
 }
 
-func (nf *NodeFailover) checkNode(group, node string) {
+func (nf *NodeFailover) checkNode(group, node, groupType string) {
 	delay, err := nf.testNodeDelay(node)
 	now := time.Now()
 
@@ -147,8 +152,9 @@ func (nf *NodeFailover) checkNode(group, node string) {
 	h, exists := nf.health[key]
 	if !exists {
 		h = &NodeHealth{
-			Name:  node,
-			Group: group,
+			Name:      node,
+			Group:     group,
+			GroupType: groupType,
 		}
 		nf.health[key] = h
 	}
@@ -206,6 +212,11 @@ func (nf *NodeFailover) autoSwitchFailedGroups(proxies map[string]MihomoProxyEnt
 
 	for groupName, proxy := range proxies {
 		if len(proxy.All) == 0 || nf.isExcludedGroup(groupName) {
+			continue
+		}
+
+		switch proxy.Type {
+		case "URLTest", "Fallback", "LoadBalance":
 			continue
 		}
 
@@ -412,6 +423,12 @@ func (s *Server) handleNodeAutoSwitch(w http.ResponseWriter, r *http.Request) {
 	proxy, exists := proxies[group]
 	if !exists || len(proxy.All) == 0 {
 		writeError(w, http.StatusNotFound, "proxy group not found: "+group)
+		return
+	}
+
+	switch proxy.Type {
+	case "URLTest", "Fallback", "LoadBalance":
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("cannot manually switch auto group type %q (%s)", proxy.Type, group))
 		return
 	}
 
