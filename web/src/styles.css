@@ -1223,6 +1223,12 @@ h1 {
   color: var(--text-primary);
 }
 
+.panelTitleInner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .metric {
   display: grid;
   gap: 5px;
