@@ -1572,21 +1572,7 @@ h1 {
   gap: 4px;
 }
 
-.nodeCard.clickable {
-  cursor: pointer;
-}
-
-.nodeCard.clickable:hover {
-  border-color: var(--accent-primary);
-  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.12);
-}
-
-.nodeCard.clickable:active {
-  transform: scale(0.98);
-}
-
 .nodeCard.isGroup {
-  cursor: pointer;
   border-style: dashed;
   border-color: var(--border-default);
   background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-default) 100%);
