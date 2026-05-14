@@ -167,7 +167,6 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   };
 
   const isNodeSelectable = (node: ProxyNode) => {
-    if (isNodeGroup(node)) return false;
     return selectableGroup;
   };
 
@@ -196,7 +195,7 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
       </Panel>
       <Panel title={group ? `${group.name} · ${group.type} · ${group.all?.length || 0} 节点` : '节点'} icon={<Activity size={18} />}>
         {error && <p className="inlineError">{error}</p>}
-        {group && selectableGroup && <p className="inlineHint">点击节点卡片即可选用。当前策略组支持手动切换节点。</p>}
+        {group && selectableGroup && <p className="inlineHint">点击卡片选用节点。带 <ChevronRight size={12} /> 箭头的是子策略组，点击"选用"选择它作为当前节点，点击"进入"查看其内部节点。</p>}
         {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核根据策略自动切换节点。如需手动选择，请切换到标记为"可切换"的策略组（如 GLOBAL、PROXY、HK 等）。</p>}
         {group && !selectableGroup && !autoGroup && <p className="inlineHint">当前策略组类型为 {group.type}，不支持手动选用节点。</p>}
         <div className="toolbar">
@@ -229,10 +228,10 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                 key={node.name}
                 className={`nodeCard${isSelected ? ' selected' : ''}${nodeIsGroup ? ' isGroup' : ''}${canSelect ? ' clickable' : ''}`}
                 onClick={() => {
-                  if (nodeIsGroup) navigateToGroup(node.name);
-                  else if (canSelect) selectProxy(node.name);
+                  if (canSelect) selectProxy(node.name);
+                  else if (nodeIsGroup) navigateToGroup(node.name);
                 }}
-                style={{ cursor: nodeIsGroup || canSelect ? 'pointer' : 'default' }}
+                style={{ cursor: canSelect || nodeIsGroup ? 'pointer' : 'default' }}
               >
                 <div className="nodeMain">
                   <span>{node.name}</span>
@@ -258,27 +257,26 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                   <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
                 </div>
                 <div className="nodeActions">
-                  {nodeIsGroup ? (
+                  {canSelect && !isSelected && (
+                    <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
+                      选用
+                    </button>
+                  )}
+                  {isSelected && <span className="currentLabel">当前节点</span>}
+                  {nodeIsGroup && (
                     <button className="enterButton" onClick={(event) => { event.stopPropagation(); navigateToGroup(node.name); }}>
                       进入 <ChevronRight size={14} />
                     </button>
-                  ) : (
-                    <>
-                      {canSelect && !isSelected && (
-                        <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
-                          选用
-                        </button>
-                      )}
-                      {isSelected && <span className="currentLabel">当前节点</span>}
-                      <button
-                        className="testButton"
-                        onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
-                        disabled={!isDelayTestable(node)}
-                      >
-                        <Gauge size={15} />
-                        测速
-                      </button>
-                    </>
+                  )}
+                  {!nodeIsGroup && (
+                    <button
+                      className="testButton"
+                      onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
+                      disabled={!isDelayTestable(node)}
+                    >
+                      <Gauge size={15} />
+                      测速
+                    </button>
                   )}
                 </div>
               </div>

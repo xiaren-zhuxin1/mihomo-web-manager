@@ -257,6 +257,9 @@ func (nf *NodeFailover) findBestNode(group string, nodes []string) string {
 
 	candidates := make([]candidate, 0, len(nodes))
 	for _, node := range nodes {
+		if nf.isExcludedGroup(node) {
+			continue
+		}
 		key := group + "/" + node
 		h, exists := nf.health[key]
 		if !exists {
