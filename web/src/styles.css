@@ -1703,6 +1703,31 @@ h1 {
   background: var(--accent-primary-bg);
 }
 
+.expandToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.expandToggle:hover {
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary);
+}
+
+.groupTree .row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .delay {
   margin-left: auto;
   min-height: 20px;
@@ -3114,6 +3139,268 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.recoveryPage {
+  padding: 0;
+}
+
+.recoveryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.recoveryPage .card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.recoveryPage .cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.recoveryPage .cardHeader.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.recoveryPage .cardHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.recoveryPage .cardBody {
+  padding: 12px 16px;
+}
+
+.recoveryPage .cardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.recoveryPage .statRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.recoveryPage .statRow span:first-child {
+  color: var(--text-secondary);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.statusDot.alive {
+  background: #22c55e;
+}
+
+.statusDot.dead {
+  background: #ef4444;
+}
+
+.recoveryPage .badge {
+  background: var(--bg-hover);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recoveryPage .badge.selectable {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.recoveryPage .badge.auto {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.eventList {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.eventItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.eventItem:last-child {
+  border-bottom: none;
+}
+
+.eventItem.error {
+  color: #ef4444;
+}
+
+.eventItem.warning {
+  color: #eab308;
+}
+
+.eventTime {
+  color: var(--text-secondary);
+  min-width: 140px;
+}
+
+.eventMsg {
+  flex: 1;
+}
+
+.eventAction {
+  background: var(--bg-hover);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.eventDetail {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.nodeHealthTable {
+  overflow-x: auto;
+}
+
+.nodeHealthTable table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.nodeHealthTable th,
+.nodeHealthTable td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.nodeHealthTable th {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.nodeHealthTable tr.skipped {
+  background: rgba(234, 179, 8, 0.05);
+}
+
+.nodeHealthTable tr.dead {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.recoveryPage .btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recoveryPage .btn:hover {
+  background: var(--bg-hover);
+}
+
+.recoveryPage .btn.accent {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.recoveryPage .btn.accent:hover {
+  background: #2563eb;
+}
+
+.recoveryPage .btn.sm {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.recoveryPage .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.recoveryPage .input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.recoveryPage .notice {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.recoveryPage .notice.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.recoveryPage .notice.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.nodeFilterBar {
+  margin-bottom: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nodeFilterBar .input {
+  max-width: 200px;
+}
+
+.nodeActionCell {
+  display: flex;
+  gap: 4px;
+}
+
+.cardWithMargin {
+  margin-top: 16px;
+}
+
+.text-green-400 { color: #22c55e; }
+.text-red-400 { color: #ef4444; }
+.text-yellow-400 { color: #eab308; }
+.text-gray-500 { color: var(--text-secondary); }
+.text-sm { font-size: 12px; }
 
 @media (max-width: 920px) {
   .app {

@@ -296,7 +296,7 @@ export function Recovery() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: '16px' }}>
+      <div className="card cardWithMargin">
         <div className="cardHeader clickable" onClick={() => setExpandedEvents(!expandedEvents)}>
           <Clock size={18} />
           <h3>恢复事件日志</h3>
@@ -324,7 +324,7 @@ export function Recovery() {
         )}
       </div>
 
-      <div className="card" style={{ marginTop: '16px' }}>
+      <div className="card cardWithMargin">
         <div className="cardHeader clickable" onClick={() => setExpandedNodes(!expandedNodes)}>
           <Settings size={18} />
           <h3>节点健康状态</h3>
@@ -333,12 +333,11 @@ export function Recovery() {
         </div>
         {expandedNodes && (
           <div className="cardBody">
-            <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="nodeFilterBar">
               <select
                 value={selectedGroup}
                 onChange={(e) => setSelectedGroup(e.target.value)}
                 className="input"
-                style={{ maxWidth: '200px' }}
               >
                 <option value="">全部策略组</option>
                 {availableGroups.map(g => (
@@ -351,7 +350,6 @@ export function Recovery() {
                 value={nodeFilter}
                 onChange={(e) => setNodeFilter(e.target.value)}
                 className="input"
-                style={{ maxWidth: '200px' }}
               />
               <button className="btn" onClick={loadNodeHealth}>
                 <RefreshCw size={14} />
@@ -403,7 +401,7 @@ export function Recovery() {
                             ) : '否'}
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '4px' }}>
+                            <div className="nodeActionCell">
                               {node.skipAuto && (
                                 <button className="btn sm" onClick={() => resetNodeSkip(node.group, node.name)}>
                                   重置
@@ -426,55 +424,6 @@ export function Recovery() {
           </div>
         )}
       </div>
-
-      <style>{`
-        .recoveryPage { padding: 0; }
-        .recoveryGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-        .cardHeader { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
-        .cardHeader.clickable { cursor: pointer; user-select: none; }
-        .cardHeader h3 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
-        .cardBody { padding: 12px 16px; }
-        .cardActions { display: flex; gap: 8px; margin-top: 12px; }
-        .statRow { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 13px; }
-        .statRow span:first-child { color: var(--text-secondary); }
-        .statusDot { width: 8px; height: 8px; border-radius: 50%; }
-        .statusDot.alive { background: #22c55e; }
-        .statusDot.dead { background: #ef4444; }
-        .badge { background: var(--bg-hover); padding: 2px 8px; border-radius: 10px; font-size: 12px; color: var(--text-secondary); }
-        .badge.selectable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-        .badge.auto { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-        .eventList { max-height: 300px; overflow-y: auto; }
-        .eventItem { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
-        .eventItem:last-child { border-bottom: none; }
-        .eventItem.error { color: #ef4444; }
-        .eventItem.warning { color: #eab308; }
-        .eventTime { color: var(--text-secondary); min-width: 140px; }
-        .eventMsg { flex: 1; }
-        .eventAction { background: var(--bg-hover); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
-        .eventDetail { color: var(--text-secondary); font-size: 11px; }
-        .nodeHealthTable { overflow-x: auto; }
-        .nodeHealthTable table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .nodeHealthTable th, .nodeHealthTable td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
-        .nodeHealthTable th { color: var(--text-secondary); font-weight: 500; }
-        .nodeHealthTable tr.skipped { background: rgba(234, 179, 8, 0.05); }
-        .nodeHealthTable tr.dead { background: rgba(239, 68, 68, 0.05); }
-        .btn { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
-        .btn:hover { background: var(--bg-hover); }
-        .btn.accent { background: #3b82f6; color: white; border-color: #3b82f6; }
-        .btn.accent:hover { background: #2563eb; }
-        .btn.sm { padding: 3px 8px; font-size: 11px; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text); font-size: 13px; }
-        .notice { padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; cursor: pointer; }
-        .notice.error { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
-        .notice.success { background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
-        .text-green-400 { color: #22c55e; }
-        .text-red-400 { color: #ef4444; }
-        .text-yellow-400 { color: #eab308; }
-        .text-gray-500 { color: var(--text-secondary); }
-        .text-sm { font-size: 12px; }
-      `}</style>
     </div>
   );
 }
