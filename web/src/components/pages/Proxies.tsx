@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Activity, Check, Gauge, Globe, RefreshCw, Zap } from 'lucide-react';
+import { Activity, Check, ChevronRight, Gauge, Globe, RefreshCw, Zap } from 'lucide-react';
 import { Panel, Metric, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { formatDelay, delayClass, latestDelay, readError, isDelayTestable } from '../../utils/helpers';
@@ -7,6 +7,8 @@ import { useGeoCache } from '../../hooks/useGeoCache';
 import type { ProxyGroup, ProxyNode } from '../../types';
 
 const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
+
+const GROUP_TYPES = ['Selector', 'URLTest', 'Fallback', 'LoadBalance', 'Compatible'];
 
 export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
@@ -95,6 +97,10 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
+  const navigateToGroup = (groupName: string) => {
+    setSelectedGroup(groupName);
+  };
+
   const testProxy = async (proxyName: string) => {
     const node = proxyMap[proxyName];
     if (!isDelayTestable(node)) {
@@ -156,6 +162,15 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     return { cached, total };
   }, [nodes, geoCache]);
 
+  const isNodeGroup = (node: ProxyNode) => {
+    return GROUP_TYPES.includes(node.type || '') || (node.all && node.all.length > 0);
+  };
+
+  const isNodeSelectable = (node: ProxyNode) => {
+    if (isNodeGroup(node)) return false;
+    return selectableGroup;
+  };
+
   return (
     <div className="split">
       <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '规则命中 - 分流规则', page: 'rules' }} />
@@ -206,21 +221,30 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
         <div className="nodeCardGrid">
           {nodes.map((node) => {
             const isSelected = group?.now === node.name;
-            const canSelect = selectableGroup;
+            const nodeIsGroup = isNodeGroup(node);
+            const canSelect = isNodeSelectable(node);
             const geoStatus = getGeoStatus(node.name);
             return (
               <div
                 key={node.name}
-                className={`nodeCard${isSelected ? ' selected' : ''}${canSelect ? ' clickable' : ''}`}
-                onClick={() => canSelect && selectProxy(node.name)}
-                style={{ cursor: canSelect ? 'pointer' : 'default' }}
+                className={`nodeCard${isSelected ? ' selected' : ''}${nodeIsGroup ? ' isGroup' : ''}${canSelect ? ' clickable' : ''}`}
+                onClick={() => {
+                  if (nodeIsGroup) navigateToGroup(node.name);
+                  else if (canSelect) selectProxy(node.name);
+                }}
+                style={{ cursor: nodeIsGroup || canSelect ? 'pointer' : 'default' }}
               >
                 <div className="nodeMain">
                   <span>{node.name}</span>
                   {isSelected && <Check size={16} className="selectedCheck" />}
+                  {nodeIsGroup && <ChevronRight size={16} className="groupArrow" />}
                 </div>
                 <div className="badgeRow">
-                  <span className="badge">{node.type || 'Unknown'}</span>
+                  {nodeIsGroup ? (
+                    <span className="badge groupBadge">策略组 · {node.type}</span>
+                  ) : (
+                    <span className="badge">{node.type || 'Unknown'}</span>
+                  )}
                   {node.udp && <span className="badge">UDP</span>}
                   {node.providerName && <span className="badge">{node.providerName}</span>}
                   {geoStatus.status === 'cached' && geoStatus.info && (
@@ -234,20 +258,28 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                   <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
                 </div>
                 <div className="nodeActions">
-                  {canSelect && !isSelected && (
-                    <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
-                      选用
+                  {nodeIsGroup ? (
+                    <button className="enterButton" onClick={(event) => { event.stopPropagation(); navigateToGroup(node.name); }}>
+                      进入 <ChevronRight size={14} />
                     </button>
+                  ) : (
+                    <>
+                      {canSelect && !isSelected && (
+                        <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
+                          选用
+                        </button>
+                      )}
+                      {isSelected && <span className="currentLabel">当前节点</span>}
+                      <button
+                        className="testButton"
+                        onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
+                        disabled={!isDelayTestable(node)}
+                      >
+                        <Gauge size={15} />
+                        测速
+                      </button>
+                    </>
                   )}
-                  {isSelected && <span className="currentLabel">当前节点</span>}
-                  <button
-                    className="testButton"
-                    onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
-                    disabled={!isDelayTestable(node)}
-                  >
-                    <Gauge size={15} />
-                    测速
-                  </button>
                 </div>
               </div>
             );

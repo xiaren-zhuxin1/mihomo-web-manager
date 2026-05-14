@@ -1585,6 +1585,55 @@ h1 {
   transform: scale(0.98);
 }
 
+.nodeCard.isGroup {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--border-default);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-default) 100%);
+}
+
+.nodeCard.isGroup:hover {
+  border-color: var(--accent-primary);
+  border-style: solid;
+  box-shadow: 0 2px 12px rgba(31, 111, 235, 0.15);
+}
+
+.nodeCard.isGroup .nodeMain {
+  color: var(--text-primary);
+}
+
+.groupArrow {
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.groupBadge {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%);
+  color: #8b5cf6;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.enterButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-bg);
+  color: var(--accent-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.enterButton:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
 .currentLabel {
   display: inline-flex;
   align-items: center;
