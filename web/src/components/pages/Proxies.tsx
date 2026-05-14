@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Activity, Check, ChevronRight, Gauge, Globe, RefreshCw, Zap } from 'lucide-react';
-import { Panel, Metric, FlowHint } from '../ui';
+import { Activity, Check, ChevronRight, Gauge, Globe, RefreshCw, Zap, ArrowLeft } from 'lucide-react';
+import { Panel, FlowHint } from '../ui';
 import { api } from '../../services/api';
 import { formatDelay, delayClass, latestDelay, readError, isDelayTestable } from '../../utils/helpers';
 import { useGeoCache } from '../../hooks/useGeoCache';
@@ -9,6 +9,14 @@ import type { ProxyGroup, ProxyNode } from '../../types';
 const PROXY_GROUP_KEY = 'mwm-selected-proxy-group';
 
 const GROUP_TYPES = ['Selector', 'URLTest', 'Fallback', 'LoadBalance', 'Compatible'];
+
+// 判断节点是否是策略组
+const isNodeGroup = (node: ProxyNode) => {
+  return GROUP_TYPES.includes(node.type || '') || (node.all && node.all.length > 0);
+};
+
+// 判断策略组是否支持手动选择
+const isSelectableType = (type: string) => ['Selector', 'Compatible', 'Fallback'].includes(type);
 
 export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   const [groups, setGroups] = useState<ProxyGroup[]>([]);
@@ -52,8 +60,10 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
   }, [selectedGroup]);
 
   const group = groups.find((item) => item.name === selectedGroup);
-  const selectableGroup = group ? ['Selector', 'Compatible', 'Fallback'].includes(group.type) : false;
-  const autoGroup = group ? ['URLTest', 'LoadBalance'].includes(group.type) : false;
+  const isSelectable = group ? isSelectableType(group.type) : false;
+  const isAuto = group ? ['URLTest', 'LoadBalance'].includes(group.type) : false;
+
+  // 获取当前组的节点列表
   const nodes = useMemo(() => {
     const query = filter.trim().toLowerCase();
     const list = (group?.all || [])
@@ -65,31 +75,22 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     });
   }, [filter, group, proxyMap, sort]);
 
-  const testAllGeo = async () => {
-    if (!group || testingGeo) return;
-    setTestingGeo(true);
-    try {
-      const nodeNames = nodes.filter(n => isDelayTestable(n)).map(n => n.name);
-      await loadGeoForNodes(nodeNames, 3);
-    } finally {
-      setTestingGeo(false);
-    }
-  };
-
-  const selectProxy = async (proxyName: string) => {
-    if (!group) return;
+  // 选择节点作为当前策略组的选中节点
+  const selectNode = async (nodeName: string) => {
+    if (!group || !isSelectable) return;
     setBusy(true);
     try {
       await api(`/api/mihomo/proxies/${encodeURIComponent(group.name)}`, {
         method: 'PUT',
-        body: JSON.stringify({ name: proxyName })
+        body: JSON.stringify({ name: nodeName })
       });
+      // 更新本地状态
       setGroups((current) =>
         current.map((g) =>
-          g.name === group.name ? { ...g, now: proxyName } : g
+          g.name === group.name ? { ...g, now: nodeName } : g
         )
       );
-      await load();
+      setError('');
     } catch (err) {
       setError(readError(err));
     } finally {
@@ -97,51 +98,44 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
-  const navigateToGroup = (groupName: string) => {
+  // 进入子策略组
+  const enterGroup = (groupName: string) => {
     setSelectedGroup(groupName);
+    setFilter('');
   };
 
-  const testProxy = async (proxyName: string) => {
-    const node = proxyMap[proxyName];
+  // 测试单个节点延迟
+  const testNodeDelay = async (nodeName: string) => {
+    const node = proxyMap[nodeName];
     if (!isDelayTestable(node)) {
-      setError(`${proxyName} 是 ${node?.type || 'Unknown'} 类型，不能直接测速。请选择具体出出站节点，或对策略组执行全组测速。`);
+      setError(`${nodeName} 是 ${node?.type || 'Unknown'} 类型，不能直接测速。`);
       return;
     }
     setBusy(true);
     try {
       const data = await api<{ delay?: number }>(
-        `/api/mihomo/proxies/${encodeURIComponent(proxyName)}/delay?timeout=5000&url=${encodeURIComponent('https://www.gstatic.com/generate_204')}`
+        `/api/mihomo/proxies/${encodeURIComponent(nodeName)}/delay?timeout=5000&url=${encodeURIComponent('https://www.gstatic.com/generate_204')}`
       );
       const delay = typeof data.delay === 'number' ? data.delay : 0;
       setProxyMap((current) => ({
         ...current,
-        [proxyName]: {
-          ...(current[proxyName] || ({ name: proxyName, type: 'Unknown' } as ProxyNode)),
+        [nodeName]: {
+          ...(current[nodeName] || ({ name: nodeName, type: 'Unknown' } as ProxyNode)),
           alive: delay > 0,
           history: [
-            ...((current[proxyName]?.history || []).slice(-4)),
+            ...((current[nodeName]?.history || []).slice(-4)),
             { time: new Date().toISOString(), delay }
           ]
         }
       }));
     } catch (err) {
       setError(readError(err));
-      setProxyMap((current) => ({
-        ...current,
-        [proxyName]: {
-          ...(current[proxyName] || ({ name: proxyName, type: 'Unknown' } as ProxyNode)),
-          alive: false,
-          history: [
-            ...((current[proxyName]?.history || []).slice(-4)),
-            { time: new Date().toISOString(), delay: 0 }
-          ]
-        }
-      }));
     } finally {
       setBusy(false);
     }
   };
 
+  // 测试整个策略组
   const testGroup = async () => {
     if (!group) return;
     setBusy(true);
@@ -155,6 +149,18 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     }
   };
 
+  // 测试地区
+  const testAllGeo = async () => {
+    if (!group || testingGeo) return;
+    setTestingGeo(true);
+    try {
+      const nodeNames = nodes.filter(n => isDelayTestable(n)).map(n => n.name);
+      await loadGeoForNodes(nodeNames, 3);
+    } finally {
+      setTestingGeo(false);
+    }
+  };
+
   const geoStats = useMemo(() => {
     const testableNodes = nodes.filter(n => isDelayTestable(n));
     const total = testableNodes.length;
@@ -162,44 +168,78 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
     return { cached, total };
   }, [nodes, geoCache]);
 
-  const isNodeGroup = (node: ProxyNode) => {
-    return GROUP_TYPES.includes(node.type || '') || (node.all && node.all.length > 0);
-  };
-
-  const isNodeSelectable = (node: ProxyNode) => {
-    return selectableGroup;
-  };
-
   return (
     <div className="split">
       <FlowHint upstream={{ label: '订阅管理 - 节点来源', page: 'subscriptions' }} downstream={{ label: '规则命中 - 分流规则', page: 'rules' }} />
+      
+      {/* 左侧：策略组列表 */}
       <Panel title={`策略组 (${groups.length})`} icon={<Zap size={18} />}>
         <div className="list">
           {groups.map((item) => {
-            const isSelectable = ['Selector', 'Compatible', 'Fallback'].includes(item.type);
-            const isAuto = ['URLTest', 'LoadBalance'].includes(item.type);
+            const groupSelectable = isSelectableType(item.type);
+            const groupAuto = ['URLTest', 'LoadBalance'].includes(item.type);
+            const isActive = item.name === selectedGroup;
             return (
-              <button key={item.name} className={item.name === selectedGroup ? 'row active' : 'row'} onClick={() => setSelectedGroup(item.name)}>
+              <button 
+                key={item.name} 
+                className={isActive ? 'row active' : 'row'} 
+                onClick={() => setSelectedGroup(item.name)}
+              >
                 <div className="groupName">
                   <span className="groupNameText">{item.name}</span>
-                  {isSelectable && <span className="badge selectable">可切换</span>}
-                  {isAuto && <span className="badge auto">自动</span>}
+                  {groupSelectable && <span className="badge selectable">可切换</span>}
+                  {groupAuto && <span className="badge auto">自动</span>}
                 </div>
                 <div className="groupNow">
-                  {item.now && <span className="nowNode">{item.now}</span>}
+                  {item.now && (
+                    <span className={`nowNode ${item.now === 'DIRECT' ? 'direct' : ''}`}>
+                      {item.now}
+                    </span>
+                  )}
                 </div>
               </button>
             );
           })}
         </div>
       </Panel>
-      <Panel title={group ? `${group.name} · ${group.type} · ${group.all?.length || 0} 节点` : '节点'} icon={<Activity size={18} />}>
+
+      {/* 右侧：节点列表 */}
+      <Panel 
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Activity size={18} />
+            {group ? `${group.name} · ${group.type}` : '节点'}
+          </div>
+        } 
+        icon={null}
+      >
         {error && <p className="inlineError">{error}</p>}
-        {group && selectableGroup && <p className="inlineHint">点击卡片选用节点。带 <ChevronRight size={12} /> 箭头的是子策略组，点击"选用"选择它作为当前节点，点击"进入"查看其内部节点。</p>}
-        {group && autoGroup && <p className="inlineHint">当前策略组为 {group.type} 自动选择模式，内核根据策略自动切换节点。如需手动选择，请切换到标记为"可切换"的策略组（如 GLOBAL、PROXY、HK 等）。</p>}
-        {group && !selectableGroup && !autoGroup && <p className="inlineHint">当前策略组类型为 {group.type}，不支持手动选用节点。</p>}
+        
+        {/* 提示信息 */}
+        {group && isSelectable && (
+          <p className="inlineHint">
+            当前策略组支持手动切换节点。点击"选用"按钮选择该节点，点击"进入"按钮管理子策略组。
+          </p>
+        )}
+        {group && isAuto && (
+          <p className="inlineHint">
+            当前策略组为 {group.type} 自动选择模式，内核会自动选择最优节点。
+          </p>
+        )}
+        {group && !isSelectable && !isAuto && (
+          <p className="inlineHint">
+            当前策略组类型为 {group.type}，不支持手动选用节点。
+          </p>
+        )}
+
+        {/* 工具栏 */}
         <div className="toolbar">
-          <input className="searchInput" placeholder="筛选节点或类型" value={filter} onChange={(event) => setFilter(event.target.value)} />
+          <input 
+            className="searchInput" 
+            placeholder="筛选节点" 
+            value={filter} 
+            onChange={(e) => setFilter(e.target.value)} 
+          />
           <button className={sort === 'delay' ? 'activeMode' : ''} onClick={() => setSort('delay')}>延迟</button>
           <button className={sort === 'name' ? 'activeMode' : ''} onClick={() => setSort('name')}>名称</button>
           <button onClick={testGroup}>
@@ -214,30 +254,30 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
             <RefreshCw size={16} />
           </button>
         </div>
+
         {geoStats.total > 0 && (
           <p className="inlineHint">地区已测: {geoStats.cached}/{geoStats.total}</p>
         )}
+
+        {/* 节点卡片网格 */}
         <div className="nodeCardGrid">
           {nodes.map((node) => {
             const isSelected = group?.now === node.name;
             const nodeIsGroup = isNodeGroup(node);
-            const canSelect = isNodeSelectable(node);
             const geoStatus = getGeoStatus(node.name);
+            
             return (
               <div
                 key={node.name}
-                className={`nodeCard${isSelected ? ' selected' : ''}${nodeIsGroup ? ' isGroup' : ''}${canSelect ? ' clickable' : ''}`}
-                onClick={() => {
-                  if (canSelect) selectProxy(node.name);
-                  else if (nodeIsGroup) navigateToGroup(node.name);
-                }}
-                style={{ cursor: canSelect || nodeIsGroup ? 'pointer' : 'default' }}
+                className={`nodeCard${isSelected ? ' selected' : ''}${nodeIsGroup ? ' isGroup' : ''}`}
               >
+                {/* 节点信息 */}
                 <div className="nodeMain">
                   <span>{node.name}</span>
                   {isSelected && <Check size={16} className="selectedCheck" />}
-                  {nodeIsGroup && <ChevronRight size={16} className="groupArrow" />}
                 </div>
+
+                {/* 标签行 */}
                 <div className="badgeRow">
                   {nodeIsGroup ? (
                     <span className="badge groupBadge">策略组 · {node.type}</span>
@@ -247,31 +287,44 @@ export function Proxies({ setBusy }: { setBusy: (busy: boolean) => void }) {
                   {node.udp && <span className="badge">UDP</span>}
                   {node.providerName && <span className="badge">{node.providerName}</span>}
                   {geoStatus.status === 'cached' && geoStatus.info && (
-                    <span className="badge region" title={`IP: ${geoStatus.info.ip} | 来源: ${geoStatus.info.source}`}>
+                    <span className="badge region" title={`IP: ${geoStatus.info.ip}`}>
                       {geoStatus.info.country}{geoStatus.info.city ? ` ${geoStatus.info.city}` : ''}
                     </span>
                   )}
                   {geoStatus.status === 'testing' && <span className="badge testing">检测中</span>}
-                  {geoStatus.status === 'failed' && <span className="badge failed">检测失败</span>}
-                  {geoStatus.status === 'not_tested' && isDelayTestable(node) && <span className="badge not_tested">未检测</span>}
                   <span className={`delay ${delayClass(node)}`}>{formatDelay(node)}</span>
                 </div>
+
+                {/* 操作按钮 */}
                 <div className="nodeActions">
-                  {canSelect && !isSelected && (
-                    <button className="selectButton" onClick={(event) => { event.stopPropagation(); selectProxy(node.name); }}>
+                  {/* 选用按钮 - 仅对支持手动选择的策略组显示 */}
+                  {isSelectable && !isSelected && (
+                    <button 
+                      className="selectButton" 
+                      onClick={() => selectNode(node.name)}
+                    >
                       选用
                     </button>
                   )}
-                  {isSelected && <span className="currentLabel">当前节点</span>}
+                  {isSelected && (
+                    <span className="currentLabel">当前节点</span>
+                  )}
+
+                  {/* 进入按钮 - 仅对子策略组显示 */}
                   {nodeIsGroup && (
-                    <button className="enterButton" onClick={(event) => { event.stopPropagation(); navigateToGroup(node.name); }}>
+                    <button 
+                      className="enterButton" 
+                      onClick={() => enterGroup(node.name)}
+                    >
                       进入 <ChevronRight size={14} />
                     </button>
                   )}
+
+                  {/* 测速按钮 - 仅对非策略组节点显示 */}
                   {!nodeIsGroup && (
                     <button
                       className="testButton"
-                      onClick={(event) => { event.stopPropagation(); testProxy(node.name); }}
+                      onClick={() => testNodeDelay(node.name)}
                       disabled={!isDelayTestable(node)}
                     >
                       <Gauge size={15} />

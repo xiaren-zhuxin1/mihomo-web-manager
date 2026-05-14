@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+export function Panel({ title, icon, children }: { title: string | React.ReactNode; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="panel">
       <div className="panelTitle">

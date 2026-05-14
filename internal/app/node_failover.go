@@ -331,8 +331,26 @@ func (nf *NodeFailover) GetConfig() NodeFailoverConfig {
 
 func (nf *NodeFailover) SetConfig(config NodeFailoverConfig) {
 	nf.mu.Lock()
+	defer nf.mu.Unlock()
+	if config.TestURL == "" {
+		config.TestURL = "http://www.gstatic.com/generate_204"
+	}
+	if config.TestTimeout == 0 {
+		config.TestTimeout = 5000
+	}
+	if config.CheckInterval == 0 {
+		config.CheckInterval = 60 * time.Second
+	}
+	if config.MaxConsecFails == 0 {
+		config.MaxConsecFails = 3
+	}
+	if config.DelayThreshold == 0 {
+		config.DelayThreshold = 5000
+	}
+	if len(config.ExcludedGroups) == 0 {
+		config.ExcludedGroups = []string{"DIRECT", "REJECT", "COMPATIBLE"}
+	}
 	nf.config = config
-	nf.mu.Unlock()
 }
 
 func (nf *NodeFailover) ResetNode(group, node string) {
