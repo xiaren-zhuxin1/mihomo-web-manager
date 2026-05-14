@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   BookOpen,
@@ -12,7 +12,8 @@ import {
   Settings2,
   Shield,
   Terminal,
-  Zap
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { initSetPage } from './components/ui';
 import { api } from './services/api';
@@ -31,7 +32,8 @@ import {
   RoutingGuide,
   Maintenance,
   ConfigEditor,
-  ProxyGroupEditor
+  ProxyGroupEditor,
+  Recovery
 } from './components/pages';
 
 const FRONTEND_VERSION = 'v1.0.42';
@@ -69,6 +71,7 @@ export default function App() {
     ['subscriptions', Cable, '订阅管理', '配置维护'],
     ['providers', ListTree, '节点资源', '配置维护'],
     ['maintenance', Settings2, '配置维护', '配置维护'],
+    ['recovery', ShieldCheck, '容灾恢复', '系统管理'],
     ['config', FileCode2, '系统配置', '系统管理']
   ] as const;
 
@@ -135,6 +138,7 @@ export default function App() {
           {page === 'subscriptions' && <Subscriptions setBusy={setBusy} />}
           {page === 'providers' && <Providers setBusy={setBusy} />}
           {page === 'rules' && <Rules setBusy={setBusy} />}
+          {page === 'recovery' && <Recovery />}
           {page === 'config' && <ConfigEditor setBusy={setBusy} health={health} />}
         </section>
       </main>

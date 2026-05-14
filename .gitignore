@@ -13,13 +13,20 @@ deploy_*.py
 fix_perm.py
 
 check_*.py
+check_*.ps1
 deploy_*.py
+deploy_*.ps1
 restart_*.py
+restart_*.ps1
 restart2.py
 test_*.py
+test_*.ps1
+test_*.sh
 verify_*.py
 fix_*.py
+fix_*.ps1
 debug_*.py
+debug_*.ps1
 add_*.py
 create_*.py
 get_*.py
@@ -27,6 +34,7 @@ set_*.py
 setup_*.py
 list_*.py
 switch_*.py
+switch_*.ps1
 copy_*.py
 parse_*.py
 quick_*.py
@@ -35,11 +43,14 @@ recreate_*.py
 refresh_*.py
 regenerate_*.py
 restore_*.py
+restore_*.ps1
 save_*.py
 start_*.py
+start_*.ps1
 summary_*.py
 summary.py
 update_*.py
+update_*.ps1
 use_*.py
 verbose_*.py
 write_*.py
@@ -47,6 +58,7 @@ manual_*.py
 simplify_*.py
 direct_*.py
 final_*.py
+final_*.ps1
 find_*.py
 delete_*.py
 run_tests.bat
@@ -57,6 +69,13 @@ deploy.config.psd1
 /deploy.sh
 core_remote.py
 web_console_*.py
+mihomo-cli.ps1
+speed_test.ps1
+force_*.ps1
+kill_*.ps1
+view_*.ps1
+upload_*.ps1
+gen_config.py
 web/test-results/
 
 # Local environment files

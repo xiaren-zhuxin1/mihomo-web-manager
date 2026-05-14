@@ -783,19 +783,6 @@ func ruleProviderNode(item configRuleProvider) *yaml.Node {
 	return node
 }
 
-func ensureSequence(root *yaml.Node, key string) *yaml.Node {
-	if node := mappingValue(root, key); node != nil {
-		if node.Kind != yaml.SequenceNode {
-			node.Kind = yaml.SequenceNode
-			node.Content = nil
-		}
-		return node
-	}
-	value := &yaml.Node{Kind: yaml.SequenceNode}
-	root.Content = append(root.Content, scalar(key), value)
-	return value
-}
-
 func upsertNamedSequenceItem(seq *yaml.Node, name string, value *yaml.Node) {
 	for i, node := range seq.Content {
 		if childScalar(node, "name") == name {
@@ -869,18 +856,6 @@ func sequence(items []string) *yaml.Node {
 		}
 	}
 	return node
-}
-
-func childScalars(root *yaml.Node, key string) []string {
-	node := mappingValue(root, key)
-	if node == nil || node.Kind != yaml.SequenceNode {
-		return nil
-	}
-	items := make([]string, 0, len(node.Content))
-	for _, child := range node.Content {
-		items = append(items, child.Value)
-	}
-	return items
 }
 
 func parseIndex(value string) (int, bool) {

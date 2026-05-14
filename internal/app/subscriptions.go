@@ -640,71 +640,6 @@ func (s *Server) removeProviderFromConfig(item Subscription) error {
 	return s.writeConfigYAML(root)
 }
 
-func (s *Server) readConfigYAML() (*yaml.Node, error) {
-	data, err := os.ReadFile(s.cfg.MihomoConfigPath)
-	if err != nil {
-		return nil, err
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err
-	}
-	if len(doc.Content) == 0 {
-		doc.Kind = yaml.DocumentNode
-		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
-	}
-	return doc.Content[0], nil
-}
-
-func (s *Server) writeConfigYAML(root *yaml.Node) error {
-	if _, err := s.backupConfig(); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	doc := yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}}
-	data, err := yaml.Marshal(&doc)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.cfg.MihomoConfigPath, data, 0o640)
-}
-
-func (s *Server) reloadMihomo() (int, string, error) {
-	status, body, err := s.forwardMihomo("PUT", "/configs?force=true", strings.NewReader(`{}`))
-	if err != nil {
-		return status, body, err
-	}
-	if status >= 300 {
-		return status, body, fmt.Errorf("mihomo reload failed: %s", body)
-	}
-	return status, body, nil
-}
-
-func ensureMapping(root *yaml.Node, key string) *yaml.Node {
-	if root.Kind != yaml.MappingNode {
-		root.Kind = yaml.MappingNode
-		root.Content = nil
-	}
-	if node := mappingValue(root, key); node != nil {
-		if node.Kind != yaml.MappingNode {
-			node.Kind = yaml.MappingNode
-			node.Content = nil
-		}
-		return node
-	}
-	value := &yaml.Node{Kind: yaml.MappingNode}
-	root.Content = append(root.Content, scalar(key), value)
-	return value
-}
-
-func mappingValue(root *yaml.Node, key string) *yaml.Node {
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == key {
-			return root.Content[i+1]
-		}
-	}
-	return nil
-}
-
 func setProvider(providers *yaml.Node, item Subscription) {
 	removeMappingKey(providers, item.ProviderName)
 	providers.Content = append(providers.Content, scalar(item.ProviderName), &yaml.Node{
@@ -723,33 +658,6 @@ func setProvider(providers *yaml.Node, item Subscription) {
 			},
 		},
 	})
-}
-
-func removeMappingKey(root *yaml.Node, key string) {
-	next := root.Content[:0]
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == key {
-			continue
-		}
-		next = append(next, root.Content[i], root.Content[i+1])
-	}
-	root.Content = next
-}
-
-func scalar(value string) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Value: value}
-}
-
-func childScalar(root *yaml.Node, key string) string {
-	if root == nil || root.Kind != yaml.MappingNode {
-		return ""
-	}
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == key {
-			return root.Content[i+1].Value
-		}
-	}
-	return ""
 }
 
 func (s *Server) writeProviderFile(item Subscription, data []byte) error {
@@ -876,7 +784,7 @@ func parseVlessURI(uri string) map[string]any {
 		name, _ = url.QueryUnescape(n)
 	}
 	if name == "" {
-		name = fmt.Sprintf("vless-%s:%d", parsed.Hostname(), parsed.Port())
+		name = fmt.Sprintf("vless-%s:%s", parsed.Hostname(), parsed.Port())
 	}
 
 	proxy := map[string]any{
